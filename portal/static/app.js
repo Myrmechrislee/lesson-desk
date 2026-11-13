@@ -384,15 +384,44 @@ if (accountForm) {
   const role = accountForm.elements.namedItem("role");
   const email = accountForm.elements.namedItem("email");
   const username = accountForm.elements.namedItem("username");
+  const children = accountForm.querySelector("[data-parent-children]");
+  const childList = children.querySelector("[data-child-list]");
+  const addChild = children.querySelector("[data-add-child]");
+  const updateChildren = () => {
+    addChild.disabled = childList.children.length >= 20;
+    for (const row of childList.children) {
+      const fields = row.querySelectorAll("input");
+      const started = Array.from(fields).some((field) => field.value.trim());
+      for (const field of fields) field.required = started;
+    }
+  };
+  childList.addEventListener("input", updateChildren);
+  childList.addEventListener("click", (event) => {
+    const remove = event.target.closest("[data-remove-child]");
+    if (!remove) return;
+    remove.closest("[data-child-row]").remove();
+    updateChildren();
+    addChild.focus();
+  });
+  addChild.addEventListener("click", () => {
+    if (childList.children.length >= 20) return;
+    childList.append(children.querySelector("[data-child-template]").content.cloneNode(true));
+    updateChildren();
+    childList.lastElementChild.querySelector("input").focus();
+  });
   const updateIdentifiers = () => {
     const student = role.value === "student";
     email.required = Boolean(role.value) && !student;
     username.required = student;
     username.disabled = !student;
     username.closest("label").hidden = !student;
+    children.hidden = role.value !== "parent";
+    children.disabled = role.value !== "parent";
+    accountForm.querySelector("[data-create-account]").textContent = role.value === "parent" ? "Create parent & children" : "Create account";
   };
   role.addEventListener("change", updateIdentifiers);
   updateIdentifiers();
+  updateChildren();
 }
 
 // A single composer keeps the same Markdown tools for comments, replies and edits.

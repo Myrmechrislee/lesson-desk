@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, header %}
+{% block title %}Delete account · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('accounts.index'), 'Accounts') }}
+{{ header('Delete account', account.name ~ ' · ' ~ account.role|capitalize) }}
+<section class="panel form-panel narrow">
+  <h2>Delete {{ account.name }}'s account?</h2>
+  <p>Their access to Lesson Desk will end immediately and their account will be removed from the directory. Existing lessons, homework and invoices will be kept as records.</p>
+  {% if account.role == 'parent' %}<p>Their children's accounts will stay available. Link the children to another parent in <strong>Students &amp; topics</strong>. Automatic weekly bookings for those children will stop.</p>{% elif account.role in ('student', 'tutor') %}<p>Their student and tutor links will be removed, and automatic weekly bookings will stop.</p>{% endif %}
+  <p class="meta">Their sign-in identity remains available to other apps. Their email or username stays reserved for their Lesson Desk records.</p>
+  <form method="post" class="form-actions">
+    {{ csrf() }}
+    <button class="button danger">Delete account</button>
+    <a class="button secondary" href="{{ url_for('accounts.index') }}">Keep account</a>
+  </form>
+</section>
+{% endblock %}

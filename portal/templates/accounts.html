@@ -8,7 +8,7 @@
 <section class="panel form-panel">
   <h2>Create an account</h2>
   <p class="meta">Students sign in with a username and do not need an email address. Adult accounts need an email address.</p>
-  <p class="meta">New parents receive an onboarding email automatically. Linking a child sends their sign-in details to the parent.</p>
+  <p class="meta">Create a parent with their children to include everyone's sign-in details in one onboarding email. Linking children later sends a follow-up email to their parent.</p>
   <form class="inline-form account-form" method="post" data-account-form>
     {{ csrf() }}
     <label>Full name<input name="name" maxlength="100" autocomplete="off" required></label>
@@ -17,7 +17,26 @@
     <label>Role
       <select name="role" required><option value="">Choose</option>{% for role in roles %}<option value="{{ role }}">{{ role|capitalize }}</option>{% endfor %}</select>
     </label>
-    <button class="button primary">Create account</button>
+    <fieldset class="account-children" data-parent-children hidden disabled>
+      <legend>Children <span class="meta">(optional)</span></legend>
+      <p class="meta" id="child-username-help">Each child gets a student account. Their username and password setup link will be included in the parent's welcome email. Usernames use 3–15 letters, numbers, dots, underscores or hyphens.</p>
+      <div data-child-list>
+        <div class="inline-form account-child" data-child-row>
+          <label>Child's full name<input name="child_name" maxlength="100" autocomplete="off"></label>
+          <label>Student username<input name="child_username" minlength="3" maxlength="15" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,14}" autocomplete="off" aria-describedby="child-username-help"></label>
+          <button class="button secondary compact" type="button" data-remove-child>Remove child</button>
+        </div>
+      </div>
+      <button class="button secondary compact" type="button" data-add-child>Add another child</button>
+      <template data-child-template>
+        <div class="inline-form account-child" data-child-row>
+          <label>Child's full name<input name="child_name" maxlength="100" autocomplete="off"></label>
+          <label>Student username<input name="child_username" minlength="3" maxlength="15" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,14}" autocomplete="off" aria-describedby="child-username-help"></label>
+          <button class="button secondary compact" type="button" data-remove-child>Remove child</button>
+        </div>
+      </template>
+    </fieldset>
+    <button class="button primary" data-create-account>Create account</button>
   </form>
   <p class="meta" id="username-help">Usernames use 3–15 letters, numbers, dots, underscores or hyphens and start with a letter or number. Letters are saved in lowercase.</p>
 </section>
@@ -37,7 +56,7 @@
   <div class="panel-head"><h2>Directory</h2><span class="meta">{{ users|length }} {{ 'account' if users|length == 1 else 'accounts' }}</span></div>
   <div class="table-wrap">
     <table>
-      <thead><tr><th scope="col">Name</th><th scope="col">Sign-in identifier</th><th scope="col">Role</th><th scope="col">Access</th></tr></thead>
+      <thead><tr><th scope="col">Name</th><th scope="col">Sign-in identifier</th><th scope="col">Role</th><th scope="col">Access</th><th scope="col">Action</th></tr></thead>
       <tbody>
         {% for user in users %}
           <tr>
@@ -73,6 +92,7 @@
                 <form method="post" action="{{ url_for('accounts.setup', account_id=user._id) }}">{{ csrf() }}<button class="button secondary compact no-wrap">Setup link</button></form>
               {% else %}<span class="pill unpaid">Provisioning pending</span>{% endif %}
             </td>
+            <td>{% if user._id != g.user._id %}<a class="button danger compact no-wrap" href="{{ url_for('accounts.delete', account_id=user._id) }}">Delete account</a>{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>

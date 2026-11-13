@@ -6,7 +6,7 @@ from flask import Flask
 import pytest
 
 from portal.accounts import Auth0Management, ManagementError, provision
-from portal.core import now
+from portal.core import Problem, now
 from portal.onboarding import deliver_next_onboarding, enqueue_onboarding, send_onboarding
 from test_portal import app, database, post, sign_in, users
 
@@ -117,6 +117,178 @@ def test_new_parent_queues_once_and_welcome_includes_all_current_children(app, d
     assert database.onboarding_deliveries.count_documents({"state": "sent"}) == 1
     assert database.onboarding_deliveries.count_documents({"state": "skipped"}) == 2
     assert "https://unit-test.auth0.com/setup" not in str(list(database.onboarding_deliveries.find()))
+
+
+def test_create_parent_with_children_sends_one_complete_welcome(app, database, users, relay, monkeypatch):
+    configure_mail(app)
+    setup_calls = setup_provider(monkeypatch)
+
+    def create_subject(self, account, password):
+        # The worker can run during any provider call without sending an early welcome.
+        assert database.onboarding_deliveries.count_documents({}) == 0
+        assert not deliver_next_onboarding()
+        assert not database.users.find_one({"_id": account["_id"]})["active"]
+        return "auth0|" + str(account["_id"])
+
+    monkeypatch.setattr(Auth0Management, "create_subject", create_subject)
+    admin = sign_in(app, users["admin"])
+    assert post(admin, "/admin/accounts", name="Family Parent", email="family@example.test", role="parent",
+                child_name=["First Child", "Second Child", ""], child_username=["First.Kid", "SECOND.KID", ""]).status_code == 303
+    parent = database.users.find_one({"email": "family@example.test"})
+    children = list(database.users.find({"parent_id": parent["_id"]}).sort("name", 1))
+    assert parent["active"] and len(children) == 2 and all(child["active"] for child in children)
+    assert [child["username"] for child in children] == ["first.kid", "second.kid"]
+    assert all("email" not in child and "provisioning_parent_id" not in child for child in children)
+    assert "provisioning_children" not in parent
+    assert database.onboarding_deliveries.count_documents({}) == 1
+    assert not setup_calls
+    with app.app_context():
+        assert deliver_next_onboarding()
+        assert not deliver_next_onboarding()
+    assert len(relay) == 1 and relay[0][0]["To"] == parent["email"]
+    for format in ("plain", "html"):
+        body = relay[0][0].get_body(preferencelist=(format,)).get_content()
+        assert "First Child" in body and "first.kid" in body
+        assert "Second Child" in body and "second.kid" in body
+        assert all(str(account["_id"]) in body for account in [parent, *children])
+    assert set(setup_calls) == {account["auth0_sub"] for account in [parent, *children]}
+    assert "https://unit-test.auth0.com/setup" not in str(list(database.onboarding_deliveries.find()))
+
+
+@pytest.mark.parametrize("children,status", [
+    ({"child_name": ["Child"], "child_username": []}, 400),
+    ({"child_name": ["Child"], "child_username": [""]}, 400),
+    ({"child_name": [""], "child_username": ["valid.kid"]}, 400),
+    ({"child_name": ["Child"], "child_username": ["bad username"]}, 400),
+    ({"child_name": ["One", "Two"], "child_username": ["same.kid", "SAME.KID"]}, 400),
+    ({"child_name": ["Child"] * 21, "child_username": ["many.kids"] * 21}, 400),
+    ({"child_name": ["Child"], "child_username": ["taken.kid"]}, 409),
+])
+def test_family_validation_precedes_provisioning(app, database, users, monkeypatch, children, status):
+    database.users.update_one({"_id": users["student"]["_id"]}, {"$set": {"username": "taken.kid"}})
+    before = database.users.count_documents({})
+
+    def unexpected_subject(*args, **kwargs):
+        pytest.fail("Invalid family data must be rejected before creating an identity")
+
+    monkeypatch.setattr(Auth0Management, "create_subject", unexpected_subject)
+    admin = sign_in(app, users["admin"])
+    assert post(admin, "/admin/accounts", name="Family Parent", email="family@example.test", role="parent", **children).status_code == status
+    assert database.users.count_documents({}) == before
+    assert database.onboarding_deliveries.count_documents({}) == 0
+
+
+def test_partial_family_failure_can_retry_without_early_email_or_duplicate_accounts(app, database, users, relay, monkeypatch):
+    configure_mail(app)
+    setup_provider(monkeypatch)
+    identities = {}
+
+    def create_subject(self, account, password):
+        if account.get("username") == "second.kid":
+            raise ManagementError(503)
+        return identities.setdefault(account["_id"], "auth0|" + str(account["_id"]))
+
+    monkeypatch.setattr(Auth0Management, "create_subject", create_subject)
+    admin = sign_in(app, users["admin"])
+    details = {"name": "Family Parent", "email": "family@example.test", "role": "parent",
+               "child_name": ["First Child", "Second Child"], "child_username": ["first.kid", "second.kid"]}
+    response = post(admin, "/admin/accounts", **details)
+    assert response.status_code == 502 and b"same parent and child details" in response.data
+    pending_ids = set(database.users.distinct("_id", {"active": False}))
+    assert len(pending_ids) == 3 and len(identities) == 2
+    assert database.onboarding_deliveries.count_documents({}) == 0
+    assert post(admin, "/admin/accounts", **{key: value for key, value in details.items() if not key.startswith("child_")}).status_code == 409
+    assert post(admin, "/admin/accounts", name="First Child", username="first.kid", role="student").status_code == 409
+    assert post(admin, "/admin/accounts", **{**details, "child_name": ["First Child"], "child_username": ["first.kid"]}).status_code == 409
+
+    monkeypatch.setattr(Auth0Management, "create_subject", lambda self, account, password: identities.setdefault(account["_id"], "auth0|" + str(account["_id"])))
+    assert post(admin, "/admin/accounts", **details).status_code == 303
+    assert set(identities) == pending_ids
+    assert database.users.count_documents({"_id": {"$in": list(pending_ids)}, "active": True}) == 3
+    with app.app_context():
+        assert deliver_next_onboarding()
+        assert not deliver_next_onboarding()
+    assert len(relay) == 1
+    assert post(admin, "/admin/accounts", **details).status_code == 409
+    assert database.onboarding_deliveries.count_documents({}) == 1
+
+
+def test_only_parents_can_be_created_with_children(app, database, users):
+    admin = sign_in(app, users["admin"])
+    before = database.users.count_documents({})
+    assert post(admin, "/admin/accounts", name="Tutor", email="new@example.test", role="tutor",
+                child_name=["Child"], child_username=["new.child"]).status_code == 400
+    assert database.users.count_documents({}) == before
+
+
+@pytest.mark.parametrize("conflict", ["parent", "child"])
+def test_auth0_identifier_conflicts_release_unused_family_reservations(app, database, users, monkeypatch, conflict):
+    setup_provider(monkeypatch)
+    identities = {}
+
+    def create_subject(self, account, password):
+        if (conflict == "parent" and account["role"] == "parent") or account.get("username") == "taken.kid":
+            raise Problem("This identifier belongs to another Auth0 account.", 409)
+        return identities.setdefault(account["_id"], "auth0|" + str(account["_id"]))
+
+    monkeypatch.setattr(Auth0Management, "create_subject", create_subject)
+    admin = sign_in(app, users["admin"])
+    details = {"name": "Family Parent", "email": "family@example.test", "role": "parent",
+               "child_name": ["First Child", "Second Child"], "child_username": ["first.kid", "taken.kid"]}
+    assert post(admin, "/admin/accounts", **details).status_code == 409
+    assert database.onboarding_deliveries.count_documents({}) == 0
+    assert not database.users.find_one({"username": "taken.kid"})
+    if conflict == "parent":
+        assert not database.users.find_one({"email": details["email"]})
+        assert not database.users.find_one({"username": "first.kid"})
+        monkeypatch.setattr(Auth0Management, "existing_user", lambda *args: {"user_id": "auth0|existing-parent"})
+        assert post(admin, "/admin/accounts/link", name=details["name"], email=details["email"], role="parent").status_code == 303
+        assert database.onboarding_deliveries.find_one({})["existing_account"]
+    else:
+        parent = database.users.find_one({"email": details["email"]})
+        assert not parent["active"] and len(identities) == 2
+        assert post(admin, "/admin/accounts", **{**details, "child_username": ["first.kid", "second.kid"]}).status_code == 303
+        assert database.users.count_documents({"parent_id": parent["_id"], "active": True}) == 2
+        assert len(identities) == 3
+        assert database.onboarding_deliveries.count_documents({}) == 1
+
+
+def test_pending_child_can_be_deleted_and_replaced_during_family_retry(app, database, users, monkeypatch):
+    def create_subject(self, account, password):
+        if account["role"] == "student":
+            raise ManagementError(503)
+        return "auth0|" + str(account["_id"])
+
+    monkeypatch.setattr(Auth0Management, "create_subject", create_subject)
+    admin = sign_in(app, users["admin"])
+    details = {"name": "Family Parent", "email": "family@example.test", "role": "parent",
+               "child_name": ["Child"], "child_username": ["old.child"]}
+    assert post(admin, "/admin/accounts", **details).status_code == 502
+    pending = database.users.find_one({"username": "old.child"})
+    assert post(admin, f"/admin/accounts/{pending['_id']}/delete").status_code == 303
+    # An empty family reservation must still wait for an explicit family retry.
+    assert post(admin, "/admin/accounts", name=details["name"], email=details["email"], role="parent").status_code == 409
+    setup_provider(monkeypatch)
+    assert post(admin, "/admin/accounts", **{**details, "child_username": ["new.child"]}).status_code == 303
+    parent = database.users.find_one({"email": details["email"]})
+    assert database.users.find_one({"username": "new.child"})["parent_id"] == parent["_id"]
+    assert not database.users.find_one({"_id": pending["_id"]})["active"]
+    assert database.onboarding_deliveries.count_documents({}) == 1
+
+
+def test_deleted_child_during_family_setup_prevents_family_activation(app, database, users, monkeypatch):
+    def create_subject(self, account, password):
+        if account["role"] == "student":
+            database.users.update_one({"_id": account["_id"]}, {"$set": {"deleted_at": now()}})
+        return "auth0|" + str(account["_id"])
+
+    monkeypatch.setattr(Auth0Management, "create_subject", create_subject)
+    admin = sign_in(app, users["admin"])
+    assert post(admin, "/admin/accounts", name="Family Parent", email="family@example.test", role="parent",
+                child_name=["Child"], child_username=["new.child"]).status_code == 409
+    assert not database.users.find_one({"email": "family@example.test"})["active"]
+    assert not database.users.find_one({"username": "new.child"})["active"]
+    assert database.onboarding_deliveries.count_documents({}) == 0
 
 
 def test_parent_without_children_receives_followup_when_child_is_linked(app, database, users, relay, monkeypatch):

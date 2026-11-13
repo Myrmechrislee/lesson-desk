@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, empty, header %}
+{% block title %}Assign homework · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('homework.index'), 'Homework') }}
+{{ header('Assign homework') }}
+<section class="panel form-panel narrow">
+{% if enrollments %}
+  <form method="post" class="form-stack" enctype="multipart/form-data">
+    {{ csrf() }}
+    <label>Student
+      <select name="student_id" required>
+        <option value="">Choose a student</option>
+        {% for row in enrollments %}<option value="{{ row.student_id }}">{{ names[row.student_id].name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Title<input name="title" maxlength="100" required></label>
+    <label>Instructions<textarea name="instructions" maxlength="4000" rows="6" required data-markdown-editor></textarea></label>
+    <label>Assignment files <span class="meta">(optional)</span>
+      <input type="file" name="files" accept="{{ file_accept }}" multiple>
+      <small>Up to five files, 8 MB each. Photos, PDF, Word (.doc or .docx), or UTF-8 text.</small>
+    </label>
+    <label>Due date <span class="meta">(optional)</span><input name="due" type="date"></label>
+    <div class="form-actions"><button class="button primary">Assign homework</button></div>
+  </form>
+{% else %}
+  {{ empty('No students linked.', 'An administrator can link students to your account.') }}
+{% endif %}
+</section>
+{% endblock %}

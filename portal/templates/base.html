@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if g.user %}<meta name="csrf-token" content="{{ csrf_token() }}">{% endif %}
+  <title>{% block title %}Lesson Desk{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='comments.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='planning.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='markdown.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='planning.js') }}"></script>
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="{{ 'signed-in' if g.user else 'signed-out' }}">
+<a class="skip-link" href="#main">Skip to content</a>
+{% if g.user %}
+  {% set role = g.user.role %}
+  {% set endpoint = request.endpoint or '' %}
+  {% set nav = {
+    'admin': [('accounts.index', 'Accounts', 'accounts'), ('accounts.students', 'Students & topics', 'links'), ('announcements.index', 'Announcements', 'announcements'), ('billing.index', 'Email delivery', 'invoices')],
+    'tutor': [('lessons.index', 'Lessons', 'lessons'), ('lessons.availability', 'Availability', 'availability'), ('homework.index', 'Homework', 'homework'), ('announcements.index', 'Announcements', 'announcements'), ('billing.index', 'Invoices', 'invoices'), ('billing.profile', 'Billing profile', 'profile')],
+    'parent': [('lessons.index', 'Lessons & feedback', 'lessons'), ('lessons.availability', 'Availability', 'availability'), ('homework.index', 'Homework', 'homework'), ('announcements.index', 'Announcements', 'announcements'), ('billing.index', 'Invoices', 'invoices')],
+    'student': [('homework.index', 'Homework', 'homework'), ('lessons.index', 'Lessons & feedback', 'lessons'), ('announcements.index', 'Announcements', 'announcements')]
+  }[role] %}
+  {% set section = 'links' if endpoint == 'accounts.students' else
+     'accounts' if request.blueprint == 'accounts' else
+     'availability' if endpoint == 'lessons.availability' else
+     'profile' if endpoint == 'billing.profile' else
+     'invoices' if request.blueprint == 'billing' else request.blueprint %}
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('home') }}"><span class="brand-mark" aria-hidden="true"></span>Lesson Desk</a>
+    <nav aria-label="Main">
+      <a href="{{ url_for('comments.notifications') }}" {% if request.blueprint == 'comments' %}aria-current="page"{% endif %}>Notifications {% if unread_notification_count %}<span class="nav-badge" aria-label="{{ unread_notification_count }} unread notifications">{{ unread_notification_count }}</span>{% endif %}</a>
+      {% for link, label, icon in nav %}
+        <a href="{{ url_for(link) }}" {% if section == icon %}aria-current="page"{% endif %}>
+          <span class="nav-icon icon-{{ icon }}" aria-hidden="true"></span>{{ label }}
+          {% if icon == 'announcements' and unread_announcement_count %}<span class="nav-badge" data-announcement-count aria-label="{{ unread_announcement_count }} unread announcements">{{ unread_announcement_count }}</span>{% endif %}
+        </a>
+      {% endfor %}
+      {% if role in ['tutor', 'parent', 'student'] %}<a href="{{ url_for('calendar.index') }}" {% if request.blueprint == 'calendar' %}aria-current="page"{% endif %}><span class="nav-icon icon-lessons" aria-hidden="true"></span>Calendar subscription</a>{% endif %}
+      {% if role in ['tutor', 'parent', 'student'] %}<a href="{{ url_for('planning.index') }}" {% if request.blueprint == 'planning' %}aria-current="page"{% endif %}>Course plans</a>{% endif %}
+    </nav>
+    <div class="account">
+      <div class="account-line">
+        <span class="avatar" aria-hidden="true">{{ g.user.name[:1]|upper }}</span>
+        <div><strong>{{ g.user.name }}</strong><small>{{ role|capitalize }}</small></div>
+      </div>
+      <form method="post" action="{{ url_for('accounts.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="sign-out">Sign out <span aria-hidden="true">↗</span></button>
+      </form>
+    </div>
+  </aside>
+{% endif %}
+<main id="main" class="{{ 'workspace' if g.user else 'public' }}">
+  {% if setup_reminders %}
+    <aside class="setup-banner" aria-label="Complete your setup">
+      <strong>A few things need your attention</strong>
+      <ul>{% for reminder in setup_reminders %}<li>{{ reminder.text }}{% if reminder.url %} <a href="{{ reminder.url }}">{{ reminder.label }}</a>{% endif %}</li>{% endfor %}</ul>
+    </aside>
+  {% endif %}
+  {% for announcement in announcement_banners %}
+    <aside class="announcement-banner" aria-label="Announcement"><strong>{{ announcement.title }}</strong><a href="{{ url_for('announcements.detail', post_id=announcement._id) }}">Read more<span class="sr-only"> about {{ announcement.title }}</span></a></aside>
+  {% endfor %}
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+    <p class="flash {{ 'flash-notice' if category == 'notice' else '' }}" role="status">{{ message }}</p>
+  {% endfor %}
+  {% block content %}{% endblock %}
+</main>
+{% for post in announcement_popups %}
+  <dialog class="announcement-popup" data-announcement-popup aria-labelledby="popup-title-{{ post._id }}">
+    <p class="meta">Important announcement</p>
+    <h2 id="popup-title-{{ post._id }}">{{ post.title }}</h2>
+    <div class="markdown-body">{{ post.body|markdown }}</div>
+    {% include 'announcement_files.html' %}
+    <form method="post" action="{{ url_for('announcements.acknowledge', post_id=post._id) }}" class="form-actions" data-acknowledge-announcement>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="version" value="{{ post.popup_version }}">
+      <button class="button primary">Close</button>
+      <a class="text-link" href="{{ url_for('announcements.detail', post_id=post._id) }}">Read full announcement</a>
+    </form>
+    <p class="meta" data-popup-error role="status" hidden></p>
+  </dialog>
+{% endfor %}
+</body>
+</html>

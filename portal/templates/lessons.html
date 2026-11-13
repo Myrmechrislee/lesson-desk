@@ -1,0 +1,151 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, empty, header, time_range %}
+{% block title %}Lessons · Lesson Desk{% endblock %}
+{% block content %}
+{% set role = g.user.role %}
+{% call header('Lessons & feedback' if role == 'parent' else 'Lessons', zone_name) %}
+  {% if role == 'tutor' %}<a class="button primary" href="{{ url_for('lessons.new') }}">Schedule lesson <span aria-hidden="true">+</span></a>{% endif %}
+{% endcall %}
+
+{% if role == 'parent' and children %}
+  <form class="toolbar filters" method="get">
+    <label for="child-filter">Student</label>
+    <select id="child-filter" name="child">
+      <option value="">All children</option>
+      {% for child in children %}
+        <option value="{{ child._id }}" {% if selected == child._id|string %}selected{% endif %}>{{ child.name }}</option>
+      {% endfor %}
+    </select>
+    <button class="button secondary compact">Apply</button>
+    <input type="hidden" name="view" value="{{ view }}">
+  </form>
+{% elif role != 'parent' %}
+  <div class="toolbar week-nav">
+    <div>
+      <strong>{{ week.strftime('%d %b') }} – {{ end_of_week.strftime('%d %b %Y') }}</strong>
+    </div>
+    <nav aria-label="Schedule week">
+      <a class="button secondary compact square" href="{{ url_for('lessons.index', week=last_week.isoformat()) }}" aria-label="Previous week">←</a>
+      <a class="button secondary compact" href="{{ url_for('lessons.index') }}">This week</a>
+      <a class="button secondary compact square" href="{{ url_for('lessons.index', week=next_week.isoformat()) }}" aria-label="Next week">→</a>
+    </nav>
+  </div>
+{% endif %}
+{% if role == 'parent' %}
+  <nav class="toolbar" aria-label="Lesson history">
+    {% for value, label in [('upcoming', 'Upcoming'), ('past', 'Past lessons & feedback'), ('all', 'All lessons')] %}
+      <a class="button {{ 'primary' if view == value else 'secondary' }} compact" href="{{ url_for('lessons.index', view=value, child=selected) }}" {% if view == value %}aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+{% endif %}
+
+<div class="{{ 'dashboard-columns' if role in ['tutor', 'parent'] else '' }}">
+  <section class="panel schedule" aria-label="Lesson schedule">
+    <div class="panel-head"><h2>{{ 'Schedule' if role != 'parent' else 'Booked lessons' }}</h2><span class="meta">{{ lessons|length }} {{ 'lesson' if lessons|length == 1 else 'lessons' }}</span></div>
+    {% if not lessons %}
+      {{ empty('No lessons in this week.' if role != 'parent' else 'No lessons in this view.', 'Schedule a lesson to add it to the calendar.' if role == 'tutor' else '') }}
+    {% endif %}
+    {% for lesson in lessons %}
+      {% set day = lesson.start_at|stamp('day') %}
+      {% if loop.changed(day) %}<div class="day-heading">{{ day }}</div>{% endif %}
+      <article class="lesson-row">
+        <div class="time-label">{{ time_range(lesson.start_at, lesson.end_at) }}</div>
+        <div class="row-body">
+          <strong>{{ lesson.title }}</strong>
+          <small>
+            {% if lesson.topic and lesson.topic != lesson.title %}{{ lesson.topic }} · {% endif %}
+            {{ names[lesson.tutor_id].name if role == 'student' else names[lesson.student_id].name }}
+            {% if role == 'parent' %}<span aria-hidden="true"> · </span>{{ names[lesson.tutor_id].name }}{% endif %}
+          </small>
+        </div>
+        <div class="row-actions">
+          <span class="pill {{ lesson.status }}">{{ statuses[lesson.status] }}</span>
+          <a class="text-link" href="{{ url_for('lessons.detail', lesson_id=lesson._id) }}">{{ 'Feedback' if (role == 'student' and (lesson.student_feedback or lesson.feedback)) or (role == 'parent' and lesson.parent_feedback) else 'Details' }} <span aria-hidden="true">↗</span></a>
+          {% if role == 'parent' and lesson.status == 'scheduled' and lesson.start_at > current %}
+            <a class="text-link" href="{{ url_for('lessons.change', lesson_id=lesson._id) }}">Request change <span aria-hidden="true">↗</span></a>
+          {% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </section>
+  {% if role in ['tutor', 'parent'] %}
+    <aside class="side-panels">
+      {% if announcements %}
+        <section class="panel">
+          <div class="panel-head"><h2>Announcements</h2><a class="text-link" href="{{ url_for('announcements.index') }}">View all</a></div>
+          {% for post in announcements %}
+            <a class="request-row" href="{{ url_for('announcements.index') }}#announcement-{{ post._id }}"><strong>{{ post.title }}</strong><small>{{ post.created_at|stamp('date') }}</small></a>
+          {% endfor %}
+        </section>
+      {% endif %}
+      <section class="panel">
+        <div class="panel-head"><h2>Change requests</h2>{% if changes %}<span class="meta">{{ changes|length }} open</span>{% endif %}</div>
+        {% for change in changes %}
+          <a class="request-row" href="{{ url_for('lessons.review', change_id=change._id) }}">
+            <strong>{{ names[change.student_id].name }} <span aria-hidden="true">↗</span></strong>
+            <span>{{ change.original_start|stamp('day') }}, {{ change.original_start|stamp('time') }} → {{ change.start_at|stamp('day') }}, {{ change.start_at|stamp('time') }}</span>
+            <small>{{ 'Awaiting response' if change.requested_by == role else 'Needs your review' }}{% if change.late %} · Within 24 hours{% endif %}</small>
+          </a>
+        {% else %}
+          {{ empty('No pending requests.') }}
+        {% endfor %}
+        {% if closed_changes %}
+          <details class="request-history">
+            <summary>Recent decisions</summary>
+            {% for change in closed_changes %}
+              <a class="request-row" href="{{ url_for('lessons.review', change_id=change._id) }}">
+                <strong>{{ names[change.student_id].name }} <span aria-hidden="true">↗</span></strong>
+                <small>{{ change.status|capitalize }} · {{ change.resolved_at|stamp('day') }}</small>
+              </a>
+            {% endfor %}
+          </details>
+        {% endif %}
+      </section>
+
+      {% if role == 'tutor' %}
+        <section class="panel weekly-plan">
+          <div class="panel-head"><h2>Weekly plan</h2></div>
+          {% for row in plan %}
+            <form method="post" action="{{ url_for('lessons.plan') }}" class="plan-row">
+              {{ csrf() }}
+              <input type="hidden" name="student_id" value="{{ row.student_id }}">
+              <input type="hidden" name="topic_id" value="{{ row._id }}">
+              <input type="hidden" name="week" value="{{ week.isoformat() }}">
+              <div>
+                <strong>{{ names[row.student_id].name }}</strong>
+                <small>{{ row.topic or 'General lessons' }} · {{ row.rate_cents|money }}</small>
+                <small>{{ row.count }} of {{ row.weekly_target }} planned</small>
+              </div>
+              <input aria-label="Weekly lesson target for {{ names[row.student_id].name }}, {{ row.topic or 'General lessons' }}" type="number" name="target" min="0" max="99" value="{{ row.weekly_target }}" required>
+              <button class="button secondary compact">Save</button>
+            </form>
+          {% else %}
+            {{ empty('No students linked.', 'An administrator can link students to your account.') }}
+          {% endfor %}
+        </section>
+        {% if series %}
+          <section class="panel form-panel">
+            <h2>Ongoing weekly bookings</h2>
+            {% for booking in series %}
+              <div class="weekly-booking">
+                <strong>{{ names[booking.student_id].name }} · {{ booking.topic }}</strong>
+                <small>{{ booking.title }} · {{ booking.first_on|day_label }} onwards, every week at {{ booking.time }}</small>
+                {% if booking.blocked_reason %}<p class="warning">Future lessons need attention: {{ booking.blocked_reason }} Update availability or stop this booking and choose a new time.</p>{% endif %}
+                <form method="post" action="{{ url_for('lessons.stop_series', series_id=booking._id) }}">{{ csrf() }}<button class="button secondary compact">Stop weekly booking</button><small>Removes future scheduled lessons in this booking.</small></form>
+              </div>
+            {% endfor %}
+          </section>
+        {% endif %}
+      {% endif %}
+    </aside>
+  {% endif %}
+</div>
+{% if learning_topics %}
+  <section class="panel">
+    <div class="panel-head"><h2>Learning topics</h2></div>
+    <div class="table-wrap"><table><thead><tr>{% if role == 'parent' %}<th scope="col">Student</th>{% endif %}<th scope="col">Topic</th><th scope="col">Tutor</th></tr></thead><tbody>
+      {% for topic in learning_topics %}<tr>{% if role == 'parent' %}<td>{{ names[topic.student_id].name }}</td>{% endif %}<td>{{ topic.topic or 'General lessons' }}</td><td>{{ names[topic.tutor_id].name }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </section>
+{% endif %}
+{% endblock %}

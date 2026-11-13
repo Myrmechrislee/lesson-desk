@@ -1,0 +1,48 @@
+{% macro comment_form(kind, target_id) %}
+<form method="post" enctype="multipart/form-data" action="{{ url_for('comments.create', kind=kind, target_id=target_id) }}" class="form-stack comment-form" data-comment-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="reply_to" value="">
+  <div class="comment-context" data-comment-context hidden><strong data-comment-context-label></strong><button type="button" class="button secondary compact" data-comment-cancel>Cancel</button></div>
+  <label><span data-comment-editor-label>Write a comment</span>
+    <textarea name="body" rows="3" maxlength="6000" data-markdown-editor></textarea>
+  </label>
+  <label>Images <span class="meta">(optional, up to five)</span><input type="file" name="images" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple></label>
+  <div class="comment-image-options" data-comment-image-options hidden></div>
+  <div class="form-actions"><button class="button primary" data-comment-submit>Post comment</button></div>
+</form>
+{% endmacro %}
+
+{% macro comment_item(kind, target_id, comment) %}
+<article class="comment-item" id="comment-{{ comment._id }}" data-comment-id="{{ comment._id }}">
+  <p class="comment-byline"><strong data-comment-author>{{ comment.author_name }}</strong> <span class="meta">{{ comment.author_role|capitalize }} · {{ comment.created_at|stamp }}</span></p>
+  <div class="comment-content"><div class="markdown-body">{{ comment.body|markdown }}</div>
+    {% if comment.images %}<div class="comment-images">{% for image in comment.images %}
+      <a href="{{ url_for('comments.image', kind=kind, target_id=target_id, comment_id=comment._id, image_id=image._id) }}" target="_blank" rel="noopener"><img loading="lazy" src="{{ url_for('comments.image', kind=kind, target_id=target_id, comment_id=comment._id, image_id=image._id) }}" alt="Image {{ loop.index }} attached by {{ comment.author_name }}"></a>
+    {% endfor %}</div>{% endif %}
+  </div>
+  {% if comment.edited_at %}<p class="meta comment-edited">Edited {{ comment.edited_at|stamp }}</p>{% endif %}
+  <div class="comment-controls">
+    <button type="button" data-comment-reply aria-pressed="false">Reply</button>
+    {% if comment.author_id == g.user._id %}
+      <button type="button" data-comment-edit="{{ url_for('comments.edit', kind=kind, target_id=target_id, comment_id=comment._id) }}" aria-pressed="false">Edit</button>
+      <script type="application/json" data-comment-source>{{ comment.body|tojson }}</script>
+      <template data-comment-image-template>{% for image in comment.images %}<label class="check"><input type="checkbox" name="remove_images" value="{{ image._id }}"> Remove image {{ loop.index }}</label>{% endfor %}</template>
+    {% endif %}
+  </div>
+</article>
+{% endmacro %}
+
+{% macro comment_panel(kind, target_id) %}
+{% set discussion = comment_thread(kind, target_id) %}
+<section class="panel form-panel comments-panel" aria-label="Comments" data-comments>
+  <h2>Comments</h2>
+  {% if kind == 'announcement' and g.user.role in ['parent', 'student'] %}<p class="meta">Your family's discussion is visible to your family, tutors, and administrators.</p>{% endif %}
+  {% for comment in discussion.threads %}
+    <div class="comment-thread">{{ comment_item(kind, target_id, comment) }}
+      {% if comment.replies %}<div class="comment-replies">{% for reply in comment.replies %}{{ comment_item(kind, target_id, reply) }}{% endfor %}</div>{% endif %}
+    </div>
+  {% else %}<p class="meta">No comments yet.</p>{% endfor %}
+  <div data-comment-home>{{ comment_form(kind, target_id) }}</div>
+  <noscript><p class="meta">Enable JavaScript to reply to or edit a comment.</p></noscript>
+</section>
+{% endmacro %}

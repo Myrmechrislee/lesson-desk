@@ -1,0 +1,48 @@
+.course-plan-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1rem; }
+.course-plan-card { text-decoration:none; color:inherit; }
+.course-plan-card:hover { border-color:var(--accent,#497363); }
+.course-plan-card h2 { margin:.35rem 0 1rem; }
+.course-timeline { list-style:none; padding:0; margin:.75rem 0 0; max-height:420px; overflow-y:auto; scroll-behavior:smooth; }
+.timeline-goal { display:flex; align-items:flex-start; gap:.7rem; padding:1rem .65rem; border-left:2px solid #d9dfdc; margin-left:14px; }
+.timeline-goal time { display:block; font-size:.75rem; margin-bottom:.3rem; }
+.timeline-goal strong { display:block; font-size:.9rem; line-height:1.5; }
+.timeline-goal .pill { display:inline-block; margin-top:.4rem; font-size:.65rem; }
+.timeline-goal form { flex-shrink:0; margin-left:-25px; }
+.goal-check { border:1px solid #cbd5cf; background:#fff; border-radius:5px; width:26px; height:26px; display:grid; place-content:center; font-size:17px; cursor:pointer; flex-shrink:0; }
+.timeline-goal > .goal-check { margin-left:-25px; cursor:default; }
+.timeline-current { border-left-color:#547563; background:#eef5ef; color:#254a37; border-radius:0 8px 8px 0; }
+.timeline-current .goal-check { border-color:#547563; color:#254a37; }
+.timeline-completed { color:#747e78; }
+.timeline-completed strong { text-decoration:line-through; }
+.timeline-completed .goal-check { background:#e6ebe7; }
+.timeline-future,.timeline-past { color:#78817c; }
+.planning-columns { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(220px,1fr); gap:1.5rem; }
+.lesson-planning { margin:1rem 0; }
+.lesson-planning .panel-head { padding:0 0 1rem; }
+.lesson-planning textarea { width:100%; }
+.lesson-course-timeline { padding-left:1rem; border-left:1px solid #e1e7e2; }
+.plan-files { list-style:none; padding:0; }
+.plan-files li { display:flex; justify-content:space-between; gap:1rem; align-items:center; padding:.6rem 0; border-bottom:1px solid #e5eae7; }
+.plan-files form { margin:0; }
+.goal-editor-fieldset { border:1px solid #d9dfdc; padding:1rem; border-radius:10px; min-width:0; }
+.goal-editor-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:.6rem; margin-bottom:1rem; padding-bottom:1rem; border-bottom:1px solid #e0e6e2; }
+.goal-editor-row > label { grid-column:1 / -1; }
+.goal-editor-row input { min-width:0; }
+.goal-editor-actions { display:flex; align-items:end; justify-content:space-between; gap:.6rem; grid-column:1 / -1; }
+.goal-editor-actions label { margin:0; display:flex; gap:.5rem; align-items:center; }
+.goal-editor-actions input { width:auto; }
+.schema-dialog { width:min(850px,calc(100vw - 2rem)); max-height:90vh; padding:1.5rem; border:1px solid #c9d4cc; border-radius:14px; }
+.schema-dialog::backdrop { background:rgba(15,34,25,.4); }
+.plan-delete-dialog { width:min(500px,calc(100vw - 2rem)); padding:1.5rem; border:1px solid #c9d4cc; border-radius:14px; }
+.plan-delete-dialog::backdrop { background:rgba(15,34,25,.4); }
+.schema-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+.schema-code { background:#172620; color:#d7e8db; border-radius:10px; padding:1.25rem; font:13px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace; overflow:auto; white-space:pre; max-height:55vh; }
+.schema-key { color:#a1cfff; }.schema-string { color:#c8e995; }.schema-number { color:#f9bd80; }.schema-boolean { color:#d3b7fa; }
+.ai-progress { display:flex; gap:.65rem; align-items:center; color:#4c7059; padding:.7rem 0; }
+.ai-progress[hidden],.ai-draft[hidden] { display:none; }
+.ai-spinner { width:18px; height:18px; border:2px solid #d3e0d6; border-top-color:#426c50; border-radius:50%; animation:plan-spin 900ms linear infinite; }
+@keyframes plan-spin { to { transform:rotate(360deg); } }
+.ai-draft { border:1px solid #cbdccc; background:#f3f8f3; padding:1rem; border-radius:10px; }
+.ai-draft pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:350px; overflow:auto; font:inherit; line-height:1.65; }
+@media (prefers-reduced-motion:reduce) { .ai-spinner { animation-duration:2s; }.course-timeline { scroll-behavior:auto; } }
+@media(max-width:800px) { .planning-columns { grid-template-columns:1fr; }.lesson-course-timeline { padding-left:0; border-left:0; border-top:1px solid #e1e7e2; padding-top:1rem; } }

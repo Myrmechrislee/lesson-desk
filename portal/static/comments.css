@@ -1,0 +1,30 @@
+.comments-panel { margin-top: 1.5rem; }
+.comment-thread + .comment-thread { border-top: 1px solid var(--line, #deded8); }
+.comment-item { padding: 1rem .7rem; border: 2px solid transparent; border-radius: 12px; scroll-margin-top: 2rem; }
+.comment-byline { display: flex; align-items: baseline; flex-wrap: wrap; gap: .3rem .7rem; margin: 0 0 .6rem; }
+.comment-byline > strong { font-size: 1.07rem; font-weight: 750; }
+.comment-byline .meta { font-size: .82rem; }
+.comment-content { padding: .9rem 1rem; border: 1px solid var(--line, #deded8); border-radius: 9px; background: #f7f8f3; }
+.comment-content .markdown-body, .comment-form .markdown-preview { font-family: Georgia, "Times New Roman", serif; font-size: 1rem; }
+.comment-content .markdown-body :is(h1, h2, h3, h4, h5, h6), .comment-form .markdown-preview :is(h1, h2, h3, h4, h5, h6) { font-family: inherit; font-size: 1rem; font-weight: 700; line-height: 1.4; letter-spacing: normal; margin: .8rem 0 .4rem; }
+.comment-content .markdown-body > :first-child { margin-top: 0; }
+.comment-replies { margin-left: 1.2rem; border-left: 2px solid var(--line, #deded8); padding-left: 1rem; }
+.comment-images { display: flex; gap: .6rem; flex-wrap: wrap; margin: .8rem 0 0; }
+.comment-images img { width: 140px; height: 110px; object-fit: cover; border-radius: 8px; }
+.comment-controls { display: flex; gap: 1.2rem; flex-wrap: wrap; margin-top: .6rem; }
+.comment-controls > button { border: 0; padding: .2rem 0; background: none; cursor: pointer; font-size: .9rem; color: var(--green, #46694d); text-decoration: underline; text-underline-offset: .2em; }
+.comment-controls > button[aria-pressed="true"] { font-weight: 750; }
+.comment-item.is-comment-target { border-color: #547a64; background: var(--mist, #eaf0e7); }
+.comment-form { margin: 1rem 0; }
+.comment-form.is-comment-active { padding: 1rem; border: 1px solid #9db5a0; border-radius: 10px; background: var(--surface, #fffefa); }
+.comment-context { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .7rem; padding-bottom: .7rem; border-bottom: 1px solid var(--line, #deded8); }
+.comment-context > strong { font-size: .92rem; }
+.comment-edited { font-size: .8rem; margin: .45rem 0 0; }
+.notification-item { padding: 1rem 0; }
+.notification-item + .notification-item { border-top: 1px solid var(--line, #deded8); }
+@media (max-width: 600px) {
+  .comment-item { padding: .8rem .35rem; }
+  .comment-replies { margin-left: .4rem; padding-left: .6rem; }
+  .comment-images img { width: 110px; height: 90px; }
+  .comment-content { padding: .7rem; }
+}

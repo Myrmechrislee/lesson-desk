@@ -1,0 +1,94 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, header %}
+{% macro calendar(kind, rows, help_id) %}
+  <div class="compact-calendar" id="{{ 'temporary-calendar' if kind == 'exception' else 'weekly-calendar' }}">
+    <table class="availability-calendar" aria-describedby="{{ help_id }}">
+      <caption class="sr-only">{{ 'Your repeating weekly availability' if kind == 'weekly' else 'Your temporary availability for the week of ' ~ calendar_week }}</caption>
+      <thead><tr><th scope="col">Time</th>{% for day in calendar_days %}<th scope="col">{{ day.strftime('%a') }}{% if kind == 'exception' %}<small>{{ day.strftime('%d %b') }}</small>{% endif %}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for row in rows %}
+          <tr class="{{ 'calendar-major-hour' if row.show_label else '' }}" data-calendar-hour="{{ row.label }}">
+            {% if row.show_label %}<th scope="row" rowspan="4">{{ row.label }}</th>{% endif %}
+            {% for cell in row.cells %}
+              {% set label = weekdays[loop.index0] ~ ' ' ~ row.label ~ ': ' ~ (cell.state|capitalize if cell.state else 'Not set') %}
+              <td class="calendar-cell {{ cell.state }}">
+                <button type="button" class="calendar-select" data-calendar-select="{{ kind }}" data-entry-id="{{ cell.entry_id }}" {% if kind == 'weekly' %}data-weekday="{{ cell.weekday }}" data-start="{{ cell.start }}" data-end="{{ cell.end }}" data-kind="available"{% else %}data-starts-at="{{ cell.starts_at }}" data-ends-at="{{ cell.ends_at }}" data-kind="unavailable"{% endif %} aria-label="{{ label }}. {{ 'Edit interval' if cell.entry_id else 'Add interval' }}" title="{{ label }}"></button>
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endmacro %}
+{% block title %}Availability · Lesson Desk{% endblock %}
+{% block content %}
+{{ header('Availability', zone_name) }}
+<p class="meta">Set the times you can attend lessons. Preferred hours are available times you would choose first; other available hours can still be booked.</p>
+{% if g.user.role == 'parent' %}
+  {% if children %}
+    <form method="get" class="date-check">
+      <input type="hidden" name="week" value="{{ calendar_week }}">
+      <label>Availability for student<select name="student_id" data-availability-student>{% for child in children %}<option value="{{ child._id }}" {{ 'selected' if child._id == selected_student else '' }}>{{ child.name }}</option>{% endfor %}</select></label>
+      <button class="button secondary">Show availability</button>
+    </form>
+    <p class="meta">Save hours for the selected student. Each child's calendar is used separately when tutors book lessons.{% if inherited %} This student currently uses your previously saved family hours; editing makes a separate copy for this student.{% endif %}</p>
+  {% else %}<p class="notice">An administrator must link a student before you can set their availability.</p>{% endif %}
+{% endif %}
+<section class="panel form-panel">
+  <h2>Weekly availability</h2>
+  <p class="meta" id="weekly-calendar-help">These hours repeat every week. Select a coloured cell to edit its interval, or an empty cell to add hours. Each cell represents 30 minutes; the editor keeps exact times.</p>
+  <div class="calendar-legend"><span class="legend-available">Available</span><span class="legend-preferred">Preferred</span></div>
+  <div class="availability-layout">
+    {{ calendar('weekly', weekly_calendar_rows, 'weekly-calendar-help') }}
+    <form id="weekly-editor" data-calendar-editor="weekly" method="post" action="{{ url_for('lessons.add_availability', kind='weekly') }}" class="calendar-editor form-stack">
+      {{ csrf() }}<input type="hidden" name="week" value="{{ calendar_week }}">{% if selected_student %}<input type="hidden" name="student_id" value="{{ selected_student }}">{% endif %}
+      <h3>Set weekly hours</h3>
+      <label>Interval
+        <select name="entry_id" data-calendar-entry>
+          <option value="">Add a new interval</option>
+          {% for entry in weekly_entries %}<option value="{{ entry.id }}" data-weekday="{{ entry.weekday }}" data-start="{{ entry.start }}" data-end="{{ entry.end }}" data-kind="{{ entry.kind }}" data-remove-url="{{ url_for('lessons.remove_availability', kind='weekly', entry_id=entry.id) }}">{{ weekdays[entry.weekday][:3] }} {{ entry.label }} · {{ entry.kind|capitalize }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Set as<select name="kind"><option value="available">Available</option><option value="preferred">Preferred</option></select></label>
+      <div class="calendar-editor-fields">
+        <label>Day<select name="weekday">{% for weekday in weekdays %}<option value="{{ loop.index0 }}">{{ weekday }}</option>{% endfor %}</select></label>
+        <label>From<input type="time" name="start" required value="09:00"></label>
+        <label>Until<input type="time" name="end" required value="10:00"><small>00:00 means the end of the day.</small></label>
+      </div>
+      <p class="meta" data-calendar-selection aria-live="polite">Choose a cell or enter an interval.</p>
+      <div class="form-actions"><button class="button primary">Save weekly hours</button><button class="button secondary" data-calendar-remove formnovalidate hidden>Remove interval</button></div>
+    </form>
+  </div>
+</section>
+<section class="panel form-panel">
+  <div class="toolbar week-nav">
+    <h2>Temporary availability</h2>
+    <nav aria-label="Temporary availability week">
+      <a class="button secondary compact" href="{{ url_for('lessons.availability', week=previous_week, student_id=selected_student) }}#temporary-calendar" aria-label="Previous week">←</a>
+      <a class="button secondary compact" href="{{ url_for('lessons.availability', student_id=selected_student) }}#temporary-calendar">This week</a>
+      <a class="button secondary compact" href="{{ url_for('lessons.availability', week=next_week, student_id=selected_student) }}#temporary-calendar" aria-label="Next week">→</a>
+    </nav>
+  </div>
+  <p id="temporary-calendar-help" class="meta">{{ calendar_week.strftime('%d %b %Y') }} – {{ last_day.strftime('%d %b %Y') }}. Add extra available or preferred hours, or mark time away. Unavailable time takes precedence over all available hours.</p>
+  <div class="calendar-legend"><span class="legend-recurring">Weekly hours</span><span class="legend-available">Extra available</span><span class="legend-preferred">Preferred</span><span class="legend-unavailable">Unavailable</span></div>
+  <div class="availability-layout">
+    {{ calendar('exception', temporary_calendar_rows, 'temporary-calendar-help') }}
+    <form id="exception-editor" data-calendar-editor="exception" method="post" action="{{ url_for('lessons.add_availability', kind='exception') }}" class="calendar-editor form-stack">
+      {{ csrf() }}<input type="hidden" name="week" value="{{ calendar_week }}">{% if selected_student %}<input type="hidden" name="student_id" value="{{ selected_student }}">{% endif %}
+      <h3>Set temporary hours</h3>
+      <label>Interval
+        <select name="entry_id" data-calendar-entry>
+          <option value="">Add a new interval</option>
+          {% for entry in temporary_entries %}<option value="{{ entry.id }}" data-kind="{{ entry.kind }}" data-starts-at="{{ entry.starts_at }}" data-ends-at="{{ entry.ends_at }}" data-remove-url="{{ url_for('lessons.remove_availability', kind='exception', entry_id=entry.id) }}">{{ entry.label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Set as<select name="kind"><option value="unavailable">Unavailable</option><option value="available">Available</option><option value="preferred">Preferred</option></select></label>
+      <label>From<input type="datetime-local" name="starts_at" required value="{{ temporary_default_start }}"></label>
+      <label>Until<input type="datetime-local" name="ends_at" required value="{{ temporary_default_end }}"></label>
+      <p class="meta" data-calendar-selection aria-live="polite">Choose a cell or enter times. An interval can span multiple days.</p>
+      <div class="form-actions"><button class="button primary">Save temporary hours</button><button class="button secondary" data-calendar-remove formnovalidate hidden>Remove interval</button></div>
+    </form>
+  </div>
+</section>
+{% endblock %}

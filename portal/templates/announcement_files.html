@@ -1,0 +1,5 @@
+{% if post.files %}
+  <ul class="announcement-attachments" aria-label="Announcement attachments">
+    {% for file in post.files %}<li><a href="{{ url_for('announcements.download', post_id=post._id, file_id=file._id) }}">{{ file.filename }} <span aria-hidden="true">↓</span></a></li>{% endfor %}
+  </ul>
+{% endif %}

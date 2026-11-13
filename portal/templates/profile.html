@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, header %}
+{% block title %}Billing profile · Lesson Desk{% endblock %}
+{% block content %}
+{{ header('Billing profile', 'These details appear on new invoices.') }}
+<section class="panel form-panel narrow">
+  <form method="post" class="form-stack">
+    {{ csrf() }}
+    <div class="fields two">
+      <label>Billing name<input name="name" maxlength="100" value="{{ profile.name or g.user.name }}" required></label>
+      <label>ABN<input name="abn" maxlength="20" value="{{ profile.abn or '' }}" inputmode="numeric" required></label>
+    </div>
+    <div class="fields two">
+      <label>Contact email<input name="email" type="email" maxlength="254" value="{{ profile.email or g.user.email }}" required></label>
+      <label>Phone <span class="meta">(optional)</span><input name="phone" type="tel" maxlength="40" value="{{ profile.phone or '' }}"></label>
+    </div>
+    <label>Address <span class="meta">(optional)</span><textarea name="address" maxlength="300" rows="2">{{ profile.address or '' }}</textarea></label>
+    <label>Days until payment is due<input name="due_days" type="number" min="0" max="365" value="{{ profile.get('due_days', 14) }}" required></label>
+    <label>Payment instructions <span class="meta">(optional)</span><textarea name="payment" maxlength="600" rows="3">{{ profile.payment or '' }}</textarea></label>
+    <div class="form-actions"><button class="button primary">Save billing profile</button></div>
+  </form>
+</section>
+{% endblock %}

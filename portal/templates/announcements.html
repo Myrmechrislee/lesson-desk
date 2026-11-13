@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, empty, header %}
+{% block title %}Announcements · Lesson Desk{% endblock %}
+{% block content %}
+{% set can_manage = g.user.role in ['admin', 'tutor'] %}
+{% call header('Announcements', 'Updates from the tutoring team for all families.') %}
+  {% if can_manage %}<a class="button primary" href="{{ url_for('announcements.new') }}">Add announcement</a>{% endif %}
+{% endcall %}
+{% for post in posts %}
+  <article class="panel form-panel announcement-card" id="announcement-{{ post._id }}">
+    <div class="panel-head announcement-head">
+      <div><h2><a href="{{ url_for('announcements.detail', post_id=post._id) }}">{{ post.title }}</a></h2>{% if post.important %}<span class="pill cancelled_late">Important</span>{% endif %}<small>{{ names[post.created_by].name }} · {{ post.created_at|stamp }}{% if post.updated_at > post.created_at %} · Updated {{ post.updated_at|stamp }}{% endif %}</small></div>
+      {% if can_manage %}
+        <div class="form-actions">
+          <a class="button secondary compact" href="{{ url_for('announcements.edit', post_id=post._id) }}">Edit</a>
+          <form method="post" action="{{ url_for('announcements.remove', post_id=post._id) }}">{{ csrf() }}<button class="button secondary compact">Remove</button></form>
+        </div>
+      {% endif %}
+    </div>
+    <div class="markdown-body">{{ post.body|markdown }}</div>
+    {% include 'announcement_files.html' %}
+    {% if can_manage and post.banner %}<p class="meta">Banner: {{ post.banner_start|stamp }} – {{ post.banner_end|stamp }}</p>{% endif %}
+  </article>
+{% else %}
+  <section class="panel">{{ empty('No announcements yet.', 'Updates from your tutoring team will appear here.') }}</section>
+{% endfor %}
+{% endblock %}

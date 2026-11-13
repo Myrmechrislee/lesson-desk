@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, header %}
+{% block title %}Calendar subscription · Lesson Desk{% endblock %}
+{% block content %}
+{% call header('Calendar subscription', 'Keep your lessons in Apple Calendar, Google Calendar, Outlook, or another calendar app.') %}{% endcall %}
+<section class="panel form-panel">
+  <h2>Subscribe to your lessons</h2>
+  <p>Subscriptions update when lessons change. Your calendar app controls how frequently it refreshes. The feed includes the previous 90 days and upcoming lessons, with ongoing weekly bookings extended at least twelve weeks ahead.</p>
+  {% if calendar_url %}
+    <label for="calendar-link">Private iCal link</label>
+    <input id="calendar-link" type="url" value="{{ calendar_url }}" readonly>
+    <p class="meta">Copy this URL into your calendar’s “Subscribe by URL” option. Anyone with this private link can see lesson names and times. Regenerating or revoking it stops access through the old link.</p>
+    <div class="form-actions">
+      <a class="button primary" href="{{ webcal_url }}">Open calendar app</a>
+      <a class="button secondary" href="{{ calendar_url }}">Download iCal file</a>
+    </div>
+    <p class="meta">Downloading a file imports a snapshot. Subscribe with the URL to receive future changes.</p>
+  {% endif %}
+  <div class="form-actions">
+    <form method="post" action="{{ url_for('calendar.renew') }}">{{ csrf() }}<button class="button secondary">{{ 'Regenerate link' if calendar_url else 'Create calendar link' }}</button></form>
+    {% if calendar_url %}<form method="post" action="{{ url_for('calendar.revoke') }}">{{ csrf() }}<button class="button secondary">Revoke link</button></form>{% endif %}
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, header, time_range %}
+{% from 'comments.html' import comment_panel with context %}
+{% block title %}{{ lesson.title }} · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('lessons.index', week=local_day), 'Lessons') }}
+{% set role = g.user.role %}
+{% set is_tutor = role == 'tutor' %}
+{% call header(lesson.title, names[lesson.student_id].name if is_tutor else names[lesson.tutor_id].name) %}
+  {% if is_tutor or lesson.start_at <= current %}
+    <a class="button primary" href="{{ url_for('whiteboard.board', lesson_id=lesson._id) }}">Open whiteboard</a>
+  {% else %}<span class="meta">Whiteboard opens when the lesson starts.</span>{% endif %}
+  {% if role in ['tutor', 'parent'] and lesson.status == 'scheduled' and lesson.start_at > current %}
+    <a class="button secondary" href="{{ url_for('lessons.change', lesson_id=lesson._id) }}">Request change</a>
+  {% endif %}
+  {% if role == 'parent' and lesson.status == 'scheduled' and lesson.start_at > current %}
+    <a class="button secondary" href="{{ url_for('lessons.cancel_form', lesson_id=lesson._id) }}">Cancel lesson</a>
+  {% endif %}
+{% endcall %}
+<div class="panel form-panel narrow lesson-summary">
+  <div><span class="meta">{{ zone_name }}</span><strong>{{ lesson.start_at|stamp('day') }}, {{ time_range(lesson.start_at, lesson.end_at) }}</strong></div>
+  <span class="pill {{ lesson.status }}">{{ statuses[lesson.status] }}</span>
+</div>
+{% if lesson.topic %}<p class="meta">Learning topic: {{ lesson.topic }}{% if is_tutor %} · {{ lesson.rate_cents|money }} per lesson{% endif %}{% if lesson.series_id %} · Weekly booking{% endif %}</p>{% endif %}
+{% include 'lesson_planning.html' %}
+{% if lesson.cancelled_by_parent %}
+  <section class="panel form-panel narrow">
+    <h2>Parent cancellation</h2>
+    <p>Cancelled {{ lesson.cancelled_at|stamp }}.{% if lesson.cancellation_fee_pending %} Awaiting tutor review.{% endif %}</p>
+    {% if role in ['tutor', 'parent'] %}<p class="preformatted">{{ lesson.parent_cancellation_reason or 'No reason provided.' }}</p>{% endif %}
+    {% if is_tutor and lesson.cancellation_fee_pending %}
+      <p>Consider the parent's reason before deciding whether to charge the cancellation fee.</p>
+      <form method="post" action="{{ url_for('lessons.cancellation_fee', lesson_id=lesson._id) }}" class="form-actions">
+        {{ csrf() }}
+        {% if can_charge %}<button class="button primary" name="decision" value="charge">Charge full lesson rate</button>{% endif %}
+        <button class="button secondary" name="decision" value="waive">Waive cancellation fee</button>
+      </form>
+    {% endif %}
+  </section>
+{% endif %}
+{% if is_tutor and not lesson.invoice_id and not lesson.cancellation_fee_pending %}
+  <section class="panel form-panel narrow">
+    <h2>Record outcome</h2>
+    <form method="post" action="{{ url_for('lessons.outcome', lesson_id=lesson._id) }}" class="form-stack">
+      {{ csrf() }}
+      <label>Outcome
+        <select name="status" required data-outcome-status>
+          <option value="">Choose an outcome</option>
+          {% for value, label in statuses.items() if value not in ['scheduled', 'cancelled_late'] %}
+            <option value="{{ value }}" {% if value == lesson.status or (value == 'cancelled' and lesson.status == 'cancelled_late') %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% include 'lesson_feedback_ai.html' %}
+      <label data-outcome-field="completed" {% if lesson.status != 'completed' %}hidden{% endif %}>Feedback for parent <span class="meta">(required)</span>
+        <textarea name="parent_feedback" maxlength="4000" rows="5" data-required {% if lesson.status == 'completed' %}required{% else %}disabled{% endif %}>{{ lesson.parent_feedback or '' }}</textarea>
+        <small>Visible to the parent.</small>
+      </label>
+      <label data-outcome-field="completed" {% if lesson.status != 'completed' %}hidden{% endif %}>Feedback for student <span class="meta">(optional)</span>
+        <textarea name="student_feedback" maxlength="4000" rows="5" {% if lesson.status != 'completed' %}disabled{% endif %}>{{ lesson.get('student_feedback', lesson.get('feedback', '')) }}</textarea>
+        <small>Visible to the student.</small>
+      </label>
+      <label data-outcome-field="cancelled" {% if lesson.status not in ['cancelled', 'cancelled_late'] %}hidden{% endif %}>Cancellation reason <span class="meta">(optional)</span>
+        <textarea name="reason" maxlength="1000" rows="2" {% if lesson.status not in ['cancelled', 'cancelled_late'] %}disabled{% endif %}>{{ lesson.cancellation_reason or '' }}</textarea>
+      </label>
+      {% if can_charge %}
+        <label class="check" data-outcome-field="cancelled" {% if lesson.status not in ['cancelled', 'cancelled_late'] %}hidden{% endif %}><input type="checkbox" name="charge_late" value="yes" {% if lesson.status not in ['cancelled', 'cancelled_late'] %}disabled{% endif %} {% if lesson.status == 'cancelled_late' and lesson.charge %}checked{% endif %}> Charge the full lesson rate for cancellation within 24 hours</label>
+      {% else %}
+        <p class="meta" data-outcome-field="cancelled" {% if lesson.status not in ['cancelled', 'cancelled_late'] %}hidden{% endif %}>Only cancellations made within 24 hours before the lesson can be charged.</p>
+      {% endif %}
+      <div class="form-actions"><button class="button primary">Save outcome</button></div>
+    </form>
+  </section>
+{% elif (role in ['parent', 'tutor'] and (lesson.status == 'completed' or lesson.parent_feedback)) or (role in ['student', 'tutor'] and (lesson.status == 'completed' or lesson.student_feedback or lesson.feedback)) or (is_tutor and lesson.cancellation_reason) %}
+  <section class="panel form-panel narrow">
+    {% if role in ['parent', 'tutor'] and (lesson.status == 'completed' or lesson.parent_feedback) %}
+      <h2>Feedback for parent</h2><p class="preformatted">{{ lesson.parent_feedback or 'No parent feedback yet.' }}</p>
+    {% endif %}
+    {% if role in ['student', 'tutor'] and (lesson.status == 'completed' or lesson.student_feedback or lesson.feedback) %}
+      <h2>Feedback for student</h2><p class="preformatted">{{ lesson.get('student_feedback', lesson.get('feedback', '')) or 'No student feedback yet.' }}</p>
+    {% endif %}
+    {% if is_tutor and lesson.cancellation_reason %}
+      <h2>Cancellation reason</h2><p class="preformatted">{{ lesson.cancellation_reason }}</p>
+    {% endif %}
+  </section>
+{% endif %}
+{{ comment_panel('lesson', lesson._id) }}
+{% endblock %}

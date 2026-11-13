@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, empty, header %}
+{% block title %}Invoices · Lesson Desk{% endblock %}
+{% block content %}
+{% set is_tutor = g.user.role == 'tutor' %}
+{% set is_admin = g.user.role == 'admin' %}
+{% set is_staff = is_tutor or is_admin %}
+{% call header('Email delivery' if is_admin else 'Invoices', 'Review, edit, and resend invoices or retry stopped deliveries.' if is_admin else 'Amounts in AUD') %}
+  {% if is_tutor %}<a class="button secondary" href="{{ url_for('billing.profile') }}">Billing profile</a>{% endif %}
+{% endcall %}
+{% if is_tutor %}
+  <section class="panel form-panel invoice-generator">
+    <h2>Generate invoice</h2>
+    {% if groups %}
+      <form method="post" class="inline-form">
+        {{ csrf() }}
+        <label>Parent
+          <select name="parent_id" required>
+            <option value="">Choose a parent</option>
+            {% for group in groups %}
+              <option value="{{ group._id }}">{{ recipients[group._id].name }} · {{ group.count }} {{ 'lesson' if group.count == 1 else 'lessons' }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button class="button primary">Generate and email PDF</button>
+      </form>
+      <p class="meta">Includes all finalized, uninvoiced lessons for that parent.</p>
+    {% else %}
+      <p class="meta">No finalized lessons are waiting to be invoiced.</p>
+    {% endif %}
+  </section>
+{% endif %}
+<section class="panel">
+  <div class="panel-head"><h2>Invoice history</h2><span class="meta">{{ invoices|length }} {{ 'invoice' if invoices|length == 1 else 'invoices' }}</span></div>
+  {% if invoices %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th scope="col">Invoice</th>{% if is_admin %}<th scope="col">Tutor</th>{% endif %}{% if is_staff %}<th scope="col">Parent</th><th scope="col">Email delivery</th>{% endif %}<th scope="col">Due</th><th scope="col">Total</th><th scope="col">Status</th><th scope="col">PDF</th></tr></thead>
+        <tbody>
+          {% for invoice in invoices %}
+            <tr>
+              <td><strong>{{ invoice.number }}</strong><small>{{ invoice.issued_at|stamp('date') }}</small>{% if invoice.edited_at %}<small>Updated {{ invoice.edited_at|stamp('date') }}</small>{% endif %}</td>
+              {% if is_admin %}<td>{{ tutor_names[invoice.tutor_id].name }}</td>{% endif %}
+              {% if is_staff %}
+                <td>{{ invoice.recipient.name }}</td>
+                <td class="delivery-cell">
+                  <strong>{% if invoice.delivery.state == 'sent' %}Email sent{% elif invoice.delivery.state == 'sending' %}Sending email{% elif invoice.delivery.state == 'failed' %}Sending stopped{% elif invoice.delivery.state == 'draft' %}Ready to resend{% elif invoice.delivery.attempts %}Email queued for retry{% else %}Email queued{% endif %}</strong>
+                  {% if invoice.delivery_reason %}<small>{{ invoice.delivery_reason }}</small>{% endif %}
+                  {% if invoice.delivery.state not in ['sent', 'draft'] %}<small>{{ invoice.delivery.attempts }} of 3 attempts{% if invoice.delivery.state == 'queued' and invoice.delivery.attempts %} · Next retry {{ invoice.delivery.next_at|stamp }}{% endif %}</small>{% endif %}
+                  {% if invoice.delivery.state == 'failed' %}
+                    {% if is_admin %}<form method="post" action="{{ url_for('billing.retry_delivery', invoice_id=invoice._id) }}">{{ csrf() }}<button class="button secondary compact">Retry email</button></form>{% else %}<small>Waiting for an administrator to retry.</small>{% endif %}
+                  {% endif %}
+                </td>
+              {% endif %}
+              <td class="no-wrap">{{ invoice.due_on|day_label }}</td>
+              <td class="no-wrap">{{ invoice.total_cents|money }}</td>
+              <td>
+                {% if is_tutor and invoice.total_cents %}
+                  <form class="table-form" method="post" action="{{ url_for('billing.set_status', invoice_id=invoice._id) }}">
+                    {{ csrf() }}
+                    <select name="status" aria-label="Status for {{ invoice.number }}">
+                      {% for value, label in statuses.items() %}<option value="{{ value }}" {% if invoice.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                    <button class="button secondary compact">Save</button>
+                  </form>
+                {% else %}
+                  <span class="pill {{ invoice.status }}">{{ statuses[invoice.status] }}</span>
+                {% endif %}
+              </td>
+              <td>
+                <a class="text-link no-wrap" href="{{ url_for('billing.download', invoice_id=invoice._id) }}">Download <span aria-hidden="true">↓</span></a>
+                {% if is_staff %}
+                  {% if invoice.delivery.state != 'sending' %}<small><a class="text-link" href="{{ url_for('billing.edit', invoice_id=invoice._id) }}">Edit invoice</a></small>{% endif %}
+                  {% if invoice.delivery.state in ['sent', 'draft'] %}<form method="post" action="{{ url_for('billing.resend', invoice_id=invoice._id) }}">{{ csrf() }}<button class="button secondary compact">Resend PDF</button></form>{% endif %}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}{{ empty('No invoices yet.') }}{% endif %}
+</section>
+{% endblock %}

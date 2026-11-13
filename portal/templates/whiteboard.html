@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='whiteboard-icon.svg') }}">
+  <title>{{ lesson.title }} · Whiteboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='whiteboard.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='call.css') }}">
+  <script defer src="{{ url_for('static', filename='call.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='whiteboard-math.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='vendor/mathjax-tex-svg.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='whiteboard.js') }}"></script>
+</head>
+<body class="board-page">
+<main class="whiteboard" data-whiteboard data-endpoint="{{ url_for('whiteboard.state', lesson_id=lesson._id) }}" data-live="{{ url_for('whiteboard.live_state', lesson_id=lesson._id) }}" data-assets="{{ url_for('whiteboard.upload', lesson_id=lesson._id) }}" data-token="{{ csrf_token() }}" data-name="{{ lesson.title }}" data-student="{{ student_name }}" data-date="{{ lesson_date }}" data-user="{{ g.user._id }}">
+  <div class="board-stage" data-board-stage>
+    <canvas data-board-canvas tabindex="0" aria-label="Lesson whiteboard. Escape selects the select tool. Drag empty space to select an area; hold Space to pan. Use the toolbar to draw."></canvas>
+    <div class="board-return"><a href="{{ url_for('lessons.detail', lesson_id=lesson._id) }}">← Lesson</a></div>
+    <header class="board-heading"><h1>{{ lesson.title }}</h1><p>{{ lesson.start_at|stamp('date') }} <span>·</span> {{ student_name }}</p></header>
+    <div class="board-actions"><span class="board-status" data-board-status role="status">Opening board…</span><button type="button" data-board-action="export">Download PNG</button><button type="button" data-board-action="fullscreen" aria-label="Toggle whiteboard fullscreen">⛶</button></div>
+    <div class="board-presence" data-board-presence aria-label="Currently viewing" aria-live="polite">Connecting…</div>
+    <div class="board-options" role="toolbar" aria-label="Board actions">
+      <button type="button" data-board-action="undo" disabled title="Undo (Ctrl/⌘ Z)">↶<span> Undo</span></button>
+      <button type="button" data-board-action="redo" disabled title="Redo (Ctrl/⌘ Shift Z)">↷<span> Redo</span></button>
+      <button type="button" data-board-action="duplicate" disabled title="Duplicate (Ctrl/⌘ D)">Duplicate</button>
+      <button type="button" data-board-action="delete" disabled title="Delete selected (Delete)">Delete</button>
+      <button type="button" data-board-action="back" disabled>Send to back</button>
+      <details class="board-templates"><summary>＋ Templates</summary><div>
+        <button type="button" data-board-template="cartesian-blank"><strong>Empty Cartesian plane</strong><small>Grid and ticks without numbers</small></button>
+        <button type="button" data-board-template="cartesian"><strong>Cartesian plane −10 to 10</strong><small>Both x and y axes numbered</small></button>
+        <button type="button" data-board-template="trig"><strong>Circular functions</strong><small>Four positive x-axis ticks · no numbers</small></button>
+        <button type="button" data-board-template="unit-circle"><strong>Unit circle</strong><small>Empty circle and axes</small></button>
+        <button type="button" data-board-template="two-way"><strong>Two-way table</strong><small>Empty cells</small></button>
+        <button type="button" data-board-template="venn"><strong>Venn diagram</strong><small>Two overlapping sets in a universal set</small></button>
+      </div></details>
+      <label class="board-upload">↑ PDF / image<input type="file" accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" multiple data-board-upload></label>
+      <details class="board-help"><summary aria-label="Keyboard shortcuts">?</summary><div><strong>Keyboard shortcuts</strong><p>Esc / V: select · Hold Space: pan<br>P: pen · E: eraser · T: text · N: note<br>L: line · R: rectangle · O: ellipse · S: shapes<br>Drag empty space: select an area<br>Shift: straight pen, square / circle, 45° lines<br>Ctrl/⌘ Z: undo · Shift Z: redo<br>Ctrl/⌘ C / V: copy / paste · D: duplicate<br>Delete: remove selection · + / −: zoom · F: fit</p></div></details>
+    </div>
+    <div class="board-settings" data-board-settings aria-label="Drawing settings" aria-hidden="true" inert>
+      <div class="board-settings-title"><strong data-board-settings-title>Pen settings</strong><button type="button" data-board-settings-close aria-label="Close drawing settings">×</button></div>
+      <label class="board-shape-field" data-board-shape-field hidden>Shape <select data-board-shape><option value="rect">Rectangle</option><option value="square">Square</option><option value="ellipse">Ellipse</option><option value="circle">Circle</option><option value="3">Triangle</option><option value="5">Pentagon</option><option value="6">Hexagon</option><option value="8">Octagon</option></select></label>
+      <div class="board-color-heading"><label><span data-board-color-label>Ink colour</span> <input type="color" value="#243d35" data-board-color></label><button type="button" data-board-save-color title="Add current colour to your row">＋ Save colour</button></div>
+      <div class="board-swatches" data-board-swatches aria-label="Colour presets"></div>
+      <small class="board-personal-label">Your colours <span>Right-click to remove</span></small>
+      <div class="board-swatches board-personal" data-board-personal aria-label="Your colour presets"></div>
+      <label class="board-width-label">Thickness <output data-board-width-value>4 px</output><input type="range" min="1" max="16" step="1" value="4" data-board-width></label>
+      <div class="board-width-presets" aria-label="Thickness presets"><button type="button" data-board-width-preset="2">2 px</button><button type="button" data-board-width-preset="4">4 px</button><button type="button" data-board-width-preset="8">8 px</button><button type="button" data-board-width-preset="12">12 px</button></div>
+      <div class="board-fill-field" data-board-fill-field hidden><label>Fill colour <input type="color" value="#e0edda" data-board-fill></label><label><input type="checkbox" checked data-board-no-fill> No fill</label><div class="board-swatches" data-board-fill-swatches aria-label="Fill colour presets"></div></div>
+    </div>
+    <div class="board-tools" role="toolbar" aria-label="Whiteboard tools">
+      <button type="button" data-board-tool="select" aria-pressed="true" title="Select (V / Escape). Drag empty space to select an area."><span>↖</span><small>Select</small></button>
+      <button type="button" data-board-tool="path" aria-pressed="false" title="Pen (P). Hold Shift for a straight stroke."><span>✎</span><small>Pen</small></button>
+      <button type="button" data-board-tool="eraser" aria-pressed="false" title="Erase objects (E)"><span>⌫</span><small>Erase</small></button>
+      <button type="button" data-board-tool="text" aria-pressed="false" title="Text (T)"><span>T</span><small>Text</small></button>
+      <button type="button" data-board-tool="note" aria-pressed="false" title="Sticky note (N)"><span>▧</span><small>Note</small></button>
+      <button type="button" data-board-tool="line" aria-pressed="false" title="Line (L). Hold Shift to snap to 45°."><span>╱</span><small>Line</small></button>
+      <button type="button" data-board-tool="shape" aria-pressed="false" title="Shapes (S). Hold Shift for a square or circle."><span>⬡</span><small>Shapes</small></button>
+    </div>
+    <p class="board-empty" data-board-empty>A little space for big ideas.<small>Choose a pen, add an empty template, or drop a PDF here.</small></p>
+    <div class="board-zoom"><button type="button" data-board-action="zoom-out" aria-label="Zoom out">−</button><output data-board-zoom>100%</output><button type="button" data-board-action="zoom-in" aria-label="Zoom in">＋</button><button type="button" data-board-action="fit">Fit all</button></div>
+    <p class="board-hint">Shared live · Shift-drag to select · Double-click text to edit</p>
+    <div class="board-drop" hidden data-board-drop>Drop PDFs or images here<small>All PDF pages are imported · Up to 40 pages / PDF · 8 MB / file</small></div>
+  </div>
+  <dialog class="board-text-dialog" data-board-text-dialog>
+    <form method="dialog" class="form-stack"><h2 data-board-text-title>Add text</h2><label>Text<textarea rows="5" maxlength="8000" required data-board-text-input></textarea></label><p class="meta">Shared as you type. LaTeX is detected automatically: use $x^2$, \(\frac{a}{b}\), or \sqrt{x}.</p><section class="board-math-preview" data-board-math-preview hidden aria-label="Private LaTeX preview"><p>LaTeX preview <small>Only visible to you</small></p><div><canvas data-board-math-canvas role="img" aria-label="Preview of your text and LaTeX"></canvas></div></section><div class="form-actions"><button type="button" class="button secondary" data-board-text-cancel>Cancel</button><button class="button primary" value="save">Save text</button></div></form>
+  </dialog>
+  {% include 'call_panel.html' %}
+  <noscript><p>This interactive whiteboard requires JavaScript.</p></noscript>
+</main>
+</body>
+</html>

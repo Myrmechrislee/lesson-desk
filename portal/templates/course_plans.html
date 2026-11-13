@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import header %}
+{% block title %}Course plans · Lesson Desk{% endblock %}
+{% block content %}
+{{ header('Course plans', 'A shared roadmap for each student and learning topic.') }}
+<div class="course-plan-grid">
+{% for topic in topics %}
+  <a class="panel form-panel course-plan-card" href="{{ url_for('planning.detail', topic_id=topic._id) }}">
+    <p class="meta">{{ names[topic.student_id].name }} · {{ names[topic.tutor_id].name }}</p>
+    <h2>{{ plans[topic._id].title if topic._id in plans else topic.get('topic', 'General lessons') }}</h2>
+    <p class="meta">{{ topic.get('topic', 'General lessons') }}{% if topic._id in plans %} · Updated {{ plans[topic._id].updated_at|stamp('date') }}{% else %} · Ready to plan{% endif %}</p>
+    <span class="text-link">{{ 'Open course plan' if topic._id in plans else 'Create course plan' if g.user.role == 'tutor' else 'View course plan' }} →</span>
+  </a>
+{% else %}<div class="panel empty">Course plans appear here when a tutor and student are linked to a learning topic.</div>{% endfor %}
+</div>
+{% endblock %}

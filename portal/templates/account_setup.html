@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, header %}
+{% block title %}Account setup · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('accounts.index'), 'Accounts') }}
+{{ header('Password setup link', account.name ~ ' · ' ~ account.role|capitalize) }}
+<section class="panel form-panel narrow">
+  <p>Share this one-use link privately with {{ account.name }}{% if account.role == 'student' %} or their parent{% endif %}. It expires in 24 hours.</p>
+  <p>Sign in as <strong>{{ account.username or account.email }}</strong> after choosing a password.</p>
+  {% if account.role == 'student' and not account.email %}<p class="meta">No email is needed. If the student forgets their password, an administrator can create another setup link and share it with their parent.</p>{% endif %}
+  <label>Setup link
+    <input type="url" value="{{ ticket }}" readonly data-setup-url>
+  </label>
+  <div class="form-actions"><button class="button primary" type="button" data-copy-link>Copy link</button></div>
+</section>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, header %}
+{% block title %}Accounts · Lesson Desk{% endblock %}
+{% block content %}
+{% call header('Accounts') %}
+  <a class="button secondary" href="{{ url_for('accounts.students') }}">Manage student links <span aria-hidden="true">↗</span></a>
+{% endcall %}
+<section class="panel form-panel">
+  <h2>Create an account</h2>
+  <p class="meta">Students sign in with a username and do not need an email address. Adult accounts need an email address.</p>
+  <form class="inline-form account-form" method="post" data-account-form>
+    {{ csrf() }}
+    <label>Full name<input name="name" maxlength="100" autocomplete="off" required></label>
+    <label>Email address <span class="meta">(optional for students)</span><input name="email" type="email" maxlength="254" autocomplete="off"></label>
+    <label>Student username<input name="username" minlength="3" maxlength="15" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,14}" autocomplete="off" aria-describedby="username-help"></label>
+    <label>Role
+      <select name="role" required><option value="">Choose</option>{% for role in roles %}<option value="{{ role }}">{{ role|capitalize }}</option>{% endfor %}</select>
+    </label>
+    <button class="button primary">Create account</button>
+  </form>
+  <p class="meta" id="username-help">Usernames use 3–15 letters, numbers, dots, underscores or hyphens and start with a letter or number. Letters are saved in lowercase.</p>
+</section>
+<section class="panel form-panel">
+  <h2>Link an existing Auth0 account</h2>
+  <p class="meta">Give someone who already uses another app access to Lesson Desk. Enable their database connection for this app in Auth0 first. Their existing password and access to other apps stay the same.</p>
+  <form class="inline-form" method="post" action="{{ url_for('accounts.link_existing') }}">
+    {{ csrf() }}
+    <label>Full name<input name="name" maxlength="100" autocomplete="off" required></label>
+    <label>Existing email<input name="email" type="email" maxlength="254" autocomplete="off" required></label>
+    <label>Role<select name="role" required><option value="">Choose</option>{% for role in roles %}<option value="{{ role }}">{{ role|capitalize }}</option>{% endfor %}</select></label>
+    <label>Auth0 user ID <span class="meta">(optional)</span><input name="auth0_sub" maxlength="256" placeholder="Only if multiple users match" autocomplete="off"></label>
+    <button class="button primary">Grant portal access</button>
+  </form>
+</section>
+<section class="panel">
+  <div class="panel-head"><h2>Directory</h2><span class="meta">{{ users|length }} {{ 'account' if users|length == 1 else 'accounts' }}</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Name</th><th scope="col">Sign-in identifier</th><th scope="col">Role</th><th scope="col">Access</th></tr></thead>
+      <tbody>
+        {% for user in users %}
+          <tr>
+            <td><strong>{{ user.name }}</strong>{% if user._id == g.user._id %}<small>Your account</small>{% endif %}</td>
+            <td>
+              {% if user.role == 'student' and user.active %}
+                {% if user.username and not user.username_sync_pending %}
+                  <strong>{{ user.username }}</strong>
+                {% else %}
+                <form class="table-form" method="post" action="{{ url_for('accounts.set_username', account_id=user._id) }}">
+                  {{ csrf() }}
+                  <input name="username" value="{{ user.username or '' }}" minlength="3" maxlength="15" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,14}" aria-label="Username for {{ user.name }}" autocomplete="off" {% if user.username_sync_pending %}readonly{% endif %} required>
+                  <button class="button secondary compact">Save username</button>
+                </form>
+                {% if user.username_sync_pending %}<small>Username pending. Save again to finish setup.</small>{% endif %}
+                {% endif %}
+                {% if user.email %}<small>{{ user.email }}</small>{% endif %}
+              {% else %}{{ user.username or user.email }}{% endif %}
+            </td>
+            <td>
+              {% if user.active and user._id != g.user._id %}
+                <form class="table-form" method="post" action="{{ url_for('accounts.change_role', account_id=user._id) }}">
+                  {{ csrf() }}
+                  <select name="role" aria-label="Role for {{ user.name }}">
+                    {% for role in roles %}<option value="{{ role }}" {% if role == user.role %}selected{% endif %}>{{ role|capitalize }}</option>{% endfor %}
+                  </select>
+                  <button class="button secondary compact">Save</button>
+                </form>
+              {% else %}{{ user.role|capitalize }}{% endif %}
+            </td>
+            <td>
+              {% if user.active %}
+                <form method="post" action="{{ url_for('accounts.setup', account_id=user._id) }}">{{ csrf() }}<button class="button secondary compact no-wrap">Setup link</button></form>
+              {% else %}<span class="pill unpaid">Provisioning pending</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

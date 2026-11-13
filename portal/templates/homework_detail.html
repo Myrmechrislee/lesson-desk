@@ -1,0 +1,98 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, header %}
+{% from 'homework_files.html' import files %}
+{% block title %}{{ assignment.title }} · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('homework.index'), 'Homework') }}
+{% set is_tutor = g.user.role == 'tutor' %}
+{% set is_parent = g.user.role == 'parent' %}
+{% set person = names[assignment.student_id].name if is_tutor or is_parent else names[assignment.tutor_id].name %}
+{{ header(assignment.title, person ~ (' · Due ' ~ (assignment.due_on|day_label) if assignment.due_on else '')) }}
+<div class="dashboard-columns">
+  <div>
+    <section class="panel form-panel">
+      <h2>Instructions</h2>
+      <div class="markdown-body">{{ assignment.instructions|markdown }}</div>
+    </section>
+    {% if resources %}
+      <section class="panel">
+        <div class="panel-head"><h2>Assignment files</h2></div>
+        {{ files(resources, assignment) }}
+      </section>
+    {% endif %}
+    {% if not is_tutor %}
+      <section class="panel form-panel">
+        <h2>{{ 'Upload work for ' ~ names[assignment.student_id].name if is_parent else 'Upload your work' }}</h2>
+        <form class="form-stack upload-form" method="post" action="{{ url_for('homework.upload', homework_id=assignment._id) }}" enctype="multipart/form-data">
+          {{ csrf() }}
+          <label>Photos or documents
+            <input type="file" name="files" accept="{{ file_accept }}" multiple required>
+            <small>Up to five files at a time, 8 MB each. JPEG, PNG, WebP, HEIC, PDF, Word (.doc or .docx), or UTF-8 text.</small>
+          </label>
+          <div class="form-actions"><button class="button primary">Upload work</button></div>
+        </form>
+      </section>
+    {% endif %}
+  </div>
+  <div>
+    <section class="panel submissions" {% if is_tutor %}data-live-photos="{{ url_for('homework.live_photos', homework_id=assignment._id) }}"{% endif %}>
+      <div class="panel-head">
+        <h2>Submitted work</h2>
+        {% if is_tutor %}<span class="live-indicator" role="status" data-live-label>Connecting</span>{% endif %}
+      </div>
+      <p class="empty" data-no-photos {% if photos %}hidden{% endif %}>No files uploaded yet.</p>
+      {{ files(photos, assignment, removable=not is_tutor, live=true) }}
+      <div class="form-panel">
+        {% if assignment.submitted_at %}
+          <p class="meta">{% if assignment.submission_source == 'tutor_override' %}Marked as completed offline by the tutor {{ assignment.submitted_at|stamp }}.{% else %}Completed homework submitted {{ assignment.submitted_at|stamp }}.{% endif %}</p>
+        {% else %}
+          <p class="meta">In progress. Submit completed homework when it is ready for marking.</p>
+        {% endif %}
+        {% if is_tutor %}
+          {% if assignment.submission_notes %}<h3>Student's work and notes</h3><p class="preformatted">{{ assignment.submission_notes }}</p>{% endif %}
+        {% else %}
+          <form class="form-stack" method="post" action="{{ url_for('homework.submit', homework_id=assignment._id) }}">
+            {{ csrf() }}
+            <label>Work or notes <span class="meta">(optional if files are uploaded)</span>
+              <textarea name="submission_notes" maxlength="4000" rows="5">{{ assignment.submission_notes|default('') }}</textarea>
+            </label>
+            <p class="meta">Adding or removing files, or saving notes, reopens homework for changes.</p>
+            <div class="form-actions">
+              <button class="button" name="action" value="save">Save notes</button>
+              <button class="button primary" name="action" value="submit">Submit completed homework</button>
+            </div>
+          </form>
+        {% endif %}
+      </div>
+    </section>
+    {% if marked or assignment.marked_at %}
+      <section class="panel">
+        <div class="panel-head"><h2>Marked homework</h2></div>
+        {{ files(marked, assignment) }}
+        <div class="form-panel">
+          <p class="meta">Returned {{ assignment.marked_at|stamp }}{% if assignment.marked_submission_at != assignment.submitted_at %}. This marking is for an earlier submission{% endif %}.</p>
+          {% if assignment.grade %}<h3>Grade</h3><p class="homework-grade">{{ assignment.grade }}</p>{% endif %}
+          {% if assignment.marking_feedback %}<h3>Tutor feedback</h3><p class="preformatted">{{ assignment.marking_feedback }}</p>{% endif %}
+        </div>
+      </section>
+    {% endif %}
+    {% if is_tutor %}
+      <section class="panel form-panel">
+        <h2>Grade homework</h2>
+          <form class="form-stack" method="post" action="{{ url_for('homework.return_marked', homework_id=assignment._id) }}" enctype="multipart/form-data">
+            {{ csrf() }}
+            {% if not assignment.submitted_at %}
+              <label class="check"><input type="checkbox" name="complete_without_submission" value="yes" required> Completed offline: mark this homework as completed even though no work has been submitted.</label>
+            {% endif %}
+            <label>Grade <span class="meta">(optional)</span><input name="grade" maxlength="100" placeholder="e.g. A, 8/10, or Complete" value="{{ assignment.grade|default('') }}"></label>
+            <label>Marked photos or documents <span class="meta">(optional)</span><input type="file" name="files" accept="{{ file_accept }}" multiple>
+              <small>Up to five files at a time, 8 MB each. Photos, PDF, Word, or UTF-8 text.</small>
+            </label>
+            <label>Feedback <span class="meta">(optional)</span><textarea name="marking_feedback" maxlength="4000" rows="4">{{ assignment.marking_feedback|default('') }}</textarea></label>
+            <div class="form-actions"><button class="button primary">Mark homework completed</button></div>
+          </form>
+      </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

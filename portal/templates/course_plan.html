@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, header %}
+{% from 'comments.html' import comment_panel with context %}
+{% block title %}{{ plan.title }} · Course plan{% endblock %}
+{% block content %}
+{{ back(url_for('planning.index'), 'Course plans') }}
+{% set is_tutor = g.user.role == 'tutor' %}
+{% call header(plan.title, names[topic.student_id].name ~ ' · ' ~ topic.get('topic', 'General lessons')) %}
+  {% if is_tutor %}
+  <a class="button secondary" href="{{ url_for('planning.download', topic_id=topic._id) }}">Download JSON</a>
+  <button class="button secondary" type="button" data-schema-open title="Show JSON schema" aria-label="Show JSON schema"><span aria-hidden="true">{ }</span> Schema</button>
+  {% if plan.revision %}<button class="button danger" type="button" data-plan-delete-open>Delete course plan</button>{% endif %}
+  {% endif %}
+{% endcall %}
+<div class="dashboard-columns">
+  <div>
+    <section class="panel form-panel">
+      <h2>Course plan</h2>
+      {% if plan.body %}<div class="markdown-body">{{ plan.body|markdown }}</div>{% else %}<p class="meta">The tutor has not written a course plan yet.</p>{% endif %}
+      {% if plan.updated_at %}<p class="meta">Updated {{ plan.updated_at|stamp }}</p>{% endif %}
+      {% if files %}<h3>Resources</h3><ul class="plan-files">{% for file in files %}<li><a href="{{ url_for('planning.file', topic_id=topic._id, file_id=file._id) }}">{{ file.filename }} ↓</a>{% if is_tutor %}<form method="post" action="{{ url_for('planning.remove_file', topic_id=topic._id, file_id=file._id) }}">{{ csrf() }}<button class="text-link" type="submit" aria-label="Remove {{ file.filename }}">Remove</button></form>{% endif %}</li>{% endfor %}</ul>{% endif %}
+    </section>
+    {% if is_tutor %}
+    <section class="panel form-panel">
+      <details {% if not plan.body %}open{% endif %}>
+        <summary><strong>Edit course plan</strong></summary>
+        <form method="post" action="{{ url_for('planning.save', topic_id=topic._id) }}" enctype="multipart/form-data" class="form-stack" data-course-plan-editor>
+          {{ csrf() }}<input type="hidden" name="revision" value="{{ plan.revision }}">
+          <label>Plan title<input name="title" value="{{ plan.title }}" maxlength="200" required></label>
+          <label>Plan <span class="meta">(Markdown)</span><textarea name="body" rows="12" maxlength="32000" data-markdown-editor>{{ plan.body }}</textarea></label>
+          <fieldset class="goal-editor-fieldset"><legend>Timeline goals</legend><p class="meta">Choose a date for each goal.</p>
+            <div data-goal-editor-list></div>
+            <button class="button secondary" type="button" data-goal-add>Add goal</button>
+            <input type="hidden" name="goals" value="{{ plan_json.goals|tojson|forceescape }}" data-goals-json>
+          </fieldset>
+          <label>Attach resources <span class="meta">(optional)</span><input type="file" name="files" accept="{{ file_accept }}" multiple><small>Up to five photos or documents per save, 8 MB each. Up to 30 resources per course plan.</small></label>
+          <div class="form-actions"><button class="button primary">Save course plan</button></div>
+          <p class="meta" data-plan-error role="status" hidden></p>
+        </form>
+      </details>
+    </section>
+    <section class="panel form-panel">
+      <details><summary><strong>Import course plan JSON</strong></summary>
+        <p class="meta">Import replaces the title, text, and timeline. Attached files stay with this course plan.</p>
+        <form method="post" action="{{ url_for('planning.import_plan', topic_id=topic._id) }}" enctype="multipart/form-data" class="form-stack">{{ csrf() }}<input type="hidden" name="revision" value="{{ plan.revision }}"><label>Course plan JSON<input type="file" name="plan_file" accept="application/json,.json" required></label><div class="form-actions"><button class="button secondary">Import JSON</button></div></form>
+      </details>
+    </section>
+    {% endif %}
+  </div>
+  <aside class="panel form-panel"><h2>Timeline</h2>{% set timeline_topic_id = topic._id %}{% include 'course_timeline.html' %}</aside>
+</div>
+{{ comment_panel('course', topic._id) }}
+{% if is_tutor %}
+<dialog class="schema-dialog" data-schema-dialog aria-labelledby="schema-title">
+  <div class="schema-head"><h2 id="schema-title">Course plan JSON schema</h2><button class="button secondary" type="button" data-schema-close aria-label="Close schema">Close</button></div>
+  <p class="meta">Use this schema to prepare a course plan for import. Goal dates use YYYY-MM-DD, for example 2026-11-20. Files are attached separately.</p>
+  <button class="button secondary" type="button" data-schema-copy>Copy schema</button><span class="meta" role="status" data-copy-status></span>
+  <pre class="schema-code" tabindex="0"><code data-schema-code>{{ schema|tojson(indent=2) }}</code></pre>
+</dialog>
+{% if plan.revision %}
+<dialog class="plan-delete-dialog" data-plan-delete-dialog aria-labelledby="plan-delete-title">
+  <h2 id="plan-delete-title">Delete course plan?</h2>
+  <p>Are you sure you want to delete {{ plan.title }}? Its goals, resources, and comments will also be deleted.</p>
+  <form method="post" action="{{ url_for('planning.delete', topic_id=topic._id) }}" class="form-stack">
+    {{ csrf() }}<input type="hidden" name="revision" value="{{ plan.revision }}"><input type="hidden" name="confirmed" value="yes">
+    <div class="form-actions"><button class="button secondary" type="button" data-plan-delete-cancel>Cancel</button><button class="button danger" type="submit">Delete course plan</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endif %}
+{% endblock %}

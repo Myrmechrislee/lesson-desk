@@ -1,0 +1,7 @@
+<div data-outcome-field="completed" {% if lesson.status != 'completed' %}hidden{% endif %} class="feedback-ai">
+  <button type="button" class="button secondary" data-ai-generate="{{ url_for('ai.generate_feedback', lesson_id=lesson._id) }}" data-ai-kind="feedback" {% if not ai_available %}disabled title="OpenRouter API key is not configured"{% endif %}>Generate feedback drafts with AI</button>
+  <p class="meta">AI uses the saved lesson plan, course plan, and whiteboard. Review both drafts before saving the outcome.</p>
+  <p class="ai-progress" data-ai-progress role="status" hidden><span class="ai-spinner" aria-hidden="true"></span>Reviewing the lesson and preparing feedback…</p>
+  <p class="meta" data-ai-error role="status" hidden></p>
+  <div class="ai-draft" data-ai-draft hidden><h3>Generated feedback drafts</h3><pre data-ai-draft-text></pre><button class="button secondary" type="button" data-ai-apply>Use these drafts</button><p class="meta">This updates both feedback fields. Review them before saving the outcome.</p></div>
+</div>

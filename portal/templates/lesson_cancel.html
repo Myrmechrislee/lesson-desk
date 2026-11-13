@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, header %}
+{% block title %}Cancel lesson · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('lessons.detail', lesson_id=lesson._id), 'Lesson details') }}
+{{ header('Cancel ' ~ lesson.title, lesson.start_at|stamp) }}
+<section class="panel form-panel narrow">
+  <p>{{ consistency_notice }}</p>
+  <p><a class="button secondary" href="{{ url_for('lessons.change', lesson_id=lesson._id) }}">Try rescheduling</a></p>
+  {% if late %}<p class="warning">{{ late_notice }}</p>{% endif %}
+  <form method="post" class="form-stack">
+    {{ csrf() }}
+    <label>Why would you like to cancel? <span class="meta">(optional)</span><textarea name="reason" maxlength="1000" rows="4"></textarea></label>
+    {% if late %}<label class="check"><input type="checkbox" name="acknowledge_late" value="yes" required>I understand that a late cancellation may be charged in full.</label>{% endif %}
+    <label class="check"><input type="checkbox" name="confirm" value="yes" required>I confirm that I would like to cancel this lesson.</label>
+    <div class="form-actions"><button class="button primary">Confirm cancellation</button><a class="button secondary" href="{{ url_for('lessons.detail', lesson_id=lesson._id) }}">Keep lesson</a></div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, header %}
+{% block title %}{{ 'Edit' if post else 'Add' }} announcement · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('announcements.index'), 'Announcements') }}
+{{ header('Edit announcement' if post else 'Add announcement', 'Visible to all parents, tutors, and administrators.') }}
+<section class="panel form-panel">
+  <form method="post" class="form-stack" enctype="multipart/form-data" data-announcement-form>
+    {{ csrf() }}
+    <label>Title<input name="title" maxlength="120" value="{{ post.title if post else '' }}" required></label>
+    <label>Announcement<textarea name="body" maxlength="6000" rows="9" required data-markdown-editor>{{ post.body if post else '' }}</textarea></label>
+    <label>Attach documents or photos<input type="file" name="files" accept="{{ file_accept }}" multiple><small>PDF, Word, text or photos. Up to five files per upload, 8 MB each.</small></label>
+    {% if post and post.files %}
+      <fieldset class="attachment-list"><legend>Current attachments</legend>{% for file in post.files %}<label class="check"><input type="checkbox" name="remove_files" value="{{ file._id }}"> Remove {{ file.filename }}</label>{% endfor %}</fieldset>
+    {% endif %}
+    <label class="check"><input type="checkbox" name="important" value="yes" data-announcement-important {% if post and post.important %}checked{% endif %}> Important announcement</label>
+    <label class="check" data-announcement-popup-option {% if not post or not post.important %}hidden{% endif %}><input type="checkbox" name="popup" value="yes" {% if post and post.popup %}checked{% endif %} {% if not post or not post.important %}disabled{% endif %}> Pop up next time parents open the website</label>
+    <small>Parents acknowledge the pop-up once. Saving with this option checked shows the updated announcement again.</small>
+    <label class="check"><input type="checkbox" name="banner" value="yes" data-announcement-banner {% if post and post.banner %}checked{% endif %}> Show as a banner</label>
+    <div class="fields two" data-announcement-banner-dates {% if not post or not post.banner %}hidden{% endif %}>
+      <label>Banner starts ({{ zone_name }})<input type="datetime-local" name="banner_start" value="{{ (post.banner_start if post and post.banner_start else default_start)|stamp('input') }}" {% if post and post.banner %}required{% else %}disabled{% endif %}></label>
+      <label>Banner ends ({{ zone_name }})<input type="datetime-local" name="banner_end" value="{{ (post.banner_end if post and post.banner_end else default_end)|stamp('input') }}" {% if post and post.banner %}required{% else %}disabled{% endif %}></label>
+    </div>
+    <small>The banner displays the title and a “Read more” link during the selected period.</small>
+    <div class="form-actions"><button class="button primary">{{ 'Save changes' if post else 'Post announcement' }}</button><a class="button secondary" href="{{ url_for('announcements.index') }}">Cancel</a></div>
+  </form>
+</section>
+{% endblock %}

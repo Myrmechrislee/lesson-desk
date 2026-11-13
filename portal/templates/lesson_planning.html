@@ -1,0 +1,22 @@
+{% from 'ui.html' import csrf %}
+<section class="panel form-panel lesson-planning">
+  <div class="panel-head"><h2>Lesson plan</h2>{% if course_topic %}<a class="text-link" href="{{ url_for('planning.detail', topic_id=course_topic._id) }}">View course plan →</a>{% endif %}</div>
+  <div class="planning-columns">
+    <div>
+      {% if g.user.role == 'tutor' %}
+        <form method="post" action="{{ url_for('planning.save_lesson_plan', lesson_id=lesson._id) }}" class="form-stack">
+          {{ csrf() }}<input type="hidden" name="plan_revision" value="{{ lesson.get('plan_revision', 0) }}">
+          <label>Agenda <span class="meta">(optional · Markdown)</span><textarea name="lesson_plan" rows="9" maxlength="32000" data-markdown-editor>{{ lesson.get('lesson_plan', '') }}</textarea></label>
+          <div class="form-actions"><button class="button primary">Save lesson plan</button>
+            {% if course_plan and (course_plan.body or course_plan.goals) %}<button type="button" class="button secondary" data-ai-generate="{{ url_for('ai.generate_plan', lesson_id=lesson._id) }}" data-ai-kind="plan" {% if not ai_available %}disabled title="OpenRouter API key is not configured"{% endif %}>Generate draft with AI</button>{% endif %}
+          </div>
+          <p class="meta">Leave the plan empty if an agenda is not needed.{% if course_plan and (course_plan.body or course_plan.goals) %} AI uses the course plan and timeline. Review its draft before saving.{% else %} Add a course plan to generate an AI draft.{% endif %}</p>
+          <p class="ai-progress" data-ai-progress role="status" hidden><span class="ai-spinner" aria-hidden="true"></span>Preparing your lesson plan…</p>
+          <p class="meta" data-ai-error role="status" hidden></p>
+          <div class="ai-draft" data-ai-draft hidden><h3>Generated draft</h3><pre data-ai-draft-text></pre><button class="button secondary" type="button" data-ai-apply>Use this draft</button><p class="meta">This updates the editor. Save the plan when you are ready.</p></div>
+        </form>
+      {% elif lesson.get('lesson_plan') %}<div class="markdown-body">{{ lesson.lesson_plan|markdown }}</div>{% else %}<p class="meta">No lesson plan has been set.</p>{% endif %}
+    </div>
+    {% if course_plan %}<aside class="lesson-course-timeline"><h3>Course timeline</h3>{% set timeline = course_timeline %}{% set timeline_topic_id = course_topic._id %}{% include 'course_timeline.html' %}</aside>{% endif %}
+  </div>
+</section>

@@ -1,0 +1,24 @@
+{% from 'ui.html' import csrf %}
+{% macro files(items, assignment, removable=false, live=false) %}
+<div class="photo-grid" {% if live %}data-photo-grid{% endif %}>
+  {% for item in items %}
+    {% set file_url = url_for('homework.photo', homework_id=assignment._id, photo_id=item._id) %}
+    {% set filename = item.filename|default('Homework photo ' ~ loop.index) %}
+    <div class="homework-file" data-photo-id="{{ item._id }}">
+      <a class="photo-tile" href="{{ file_url }}" target="_blank" rel="noopener">
+        {% if item.mimetype|default('image/jpeg') == 'image/jpeg' %}
+          <img src="{{ file_url }}" alt="{{ filename }}" loading="lazy">
+        {% else %}
+          <span class="document-preview" aria-hidden="true">Document ↓</span>
+        {% endif %}
+        <span class="file-caption">{{ filename }}</span>
+      </a>
+      {% if removable %}
+        <form method="post" action="{{ url_for('homework.delete_file', homework_id=assignment._id, photo_id=item._id) }}">
+          {{ csrf() }}<button class="text-link" aria-label="Remove {{ filename }}">Remove file</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% endmacro %}

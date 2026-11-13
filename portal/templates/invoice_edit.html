@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, header, back %}
+{% block title %}Edit {{ invoice.number }} · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('billing.index'), 'Invoices') }}
+{{ header('Edit ' ~ invoice.number, 'Update the saved PDF, then resend it when ready. Lesson bookings and invoice ownership stay linked to the original records.') }}
+{% if invoice.delivery.state == 'sending' %}
+  <section class="panel form-panel"><p>This invoice is being emailed. Wait for delivery to finish, then reopen this page.</p></section>
+{% else %}
+<form method="post" class="form-stack">
+  {{ csrf() }}
+  <input type="hidden" name="revision" value="{{ invoice.get('revision', 0) }}">
+  <section class="panel form-panel form-stack">
+    <h2>Invoice details</h2>
+    <div class="fields two">
+      <label>Recipient name<input name="recipient_name" maxlength="100" value="{{ invoice.recipient.name }}" required></label>
+      <label>Recipient email<input name="recipient_email" type="email" maxlength="254" value="{{ invoice.recipient.email }}" required></label>
+    </div>
+    <div class="fields two">
+      <label>Due date<input name="due_on" type="date" min="1900-01-01" max="2199-12-31" value="{{ invoice.due_on }}" required></label>
+      <label>Payment status<select name="status">{% for value, label in statuses.items() %}<option value="{{ value }}" {% if invoice.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="fields two">
+      <label>Supplier name<input name="supplier_name" maxlength="100" value="{{ invoice.supplier.name }}" required></label>
+      <label>ABN<input name="supplier_abn" maxlength="20" value="{{ invoice.supplier.abn }}" inputmode="numeric" required></label>
+    </div>
+    <div class="fields two">
+      <label>Supplier email<input name="supplier_email" type="email" maxlength="254" value="{{ invoice.supplier.email }}" required></label>
+      <label>Supplier phone<input name="supplier_phone" maxlength="40" value="{{ invoice.supplier.phone or '' }}"></label>
+    </div>
+    <label>Supplier address<textarea name="supplier_address" maxlength="300" rows="2">{{ invoice.supplier.address or '' }}</textarea></label>
+    <label>Payment instructions<textarea name="payment" maxlength="600" rows="3">{{ invoice.supplier.payment or '' }}</textarea></label>
+    <label>Invoice note <span class="meta">(optional)</span><textarea name="note" maxlength="1000" rows="3">{{ invoice.note or '' }}</textarea></label>
+    <p class="meta">Amounts are in AUD. Changing a due date updates whether an unpaid invoice is overdue. A zero total is marked paid.</p>
+  </section>
+  {% for line in invoice.lines %}
+  {% set prefix = 'line_' ~ loop.index0 ~ '_' %}
+  <section class="panel form-panel form-stack">
+    <h2>{{ 'Lesson' if line.lesson_id else 'Adjustment' }} {{ loop.index }}</h2>
+    {% if line.lesson_id %}
+      <div class="fields two">
+        <label>Student name<input name="{{ prefix }}student" maxlength="100" value="{{ line.student }}" required></label>
+        <label>Topic<input name="{{ prefix }}topic" maxlength="100" value="{{ line.topic or '' }}"></label>
+      </div>
+      <div class="fields two">
+        <label>Starts · {{ zone_name }}<input name="{{ prefix }}start" type="datetime-local" value="{{ line.start_at|stamp('input') }}" required></label>
+        <label>Ends · {{ zone_name }}<input name="{{ prefix }}end" type="datetime-local" value="{{ line.end_at|stamp('input') }}" required></label>
+      </div>
+    {% else %}
+      <label>Description<input name="{{ prefix }}description" maxlength="300" value="{{ line.description }}" required></label>
+      <label class="check-label"><input type="checkbox" name="{{ prefix }}remove" value="yes"> Remove this adjustment</label>
+    {% endif %}
+    <label>Amount (AUD)<input name="{{ prefix }}amount" type="number" step="0.01" min="{{ '0' if line.lesson_id else '-99999.99' }}" max="99999.99" value="{{ '%.2f'|format(line.amount_cents / 100) }}" required></label>
+  </section>
+  {% endfor %}
+  <section class="panel form-panel form-stack">
+    <h2>Add an adjustment <span class="meta">(optional)</span></h2>
+    <div class="fields two">
+      <label>Description<input name="adjustment_description" maxlength="300" placeholder="For example, lesson credit"></label>
+      <label>Amount (AUD)<input name="adjustment_amount" type="number" step="0.01" min="-99999.99" max="99999.99" placeholder="Use a negative amount for a credit"></label>
+    </div>
+    <p class="meta">The total is recalculated from every line. Credits cannot make the total negative.</p>
+  </section>
+  <div class="form-actions">
+    <button class="button secondary" name="action" value="save">Save changes</button>
+    {% if invoice.delivery.state != 'failed' or g.user.role == 'admin' %}<button class="button primary" name="action" value="send">Save and resend PDF</button>{% endif %}
+  </div>
+  {% if invoice.delivery.state == 'failed' and g.user.role != 'admin' %}<p class="meta">An administrator must resume this stopped email delivery after you save.</p>{% endif %}
+</form>
+{% endif %}
+{% endblock %}

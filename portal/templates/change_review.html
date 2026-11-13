@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, header, time_range %}
+{% block title %}Lesson change request · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('lessons.index'), 'Lessons') }}
+{{ header('Lesson change request', names[change.student_id].name ~ ' · ' ~ zone_name) }}
+<section class="panel form-panel narrow">
+  <div class="request-summary">
+    <div><span class="meta">Original time</span><strong>{{ change.original_start|stamp }}</strong></div>
+    <div><span class="meta">Requested time</span><strong>{{ change.start_at|stamp('day') }}, {{ time_range(change.start_at, change.end_at) }}</strong></div>
+  </div>
+  <p class="request-by">Requested by {{ names[change[change.requested_by ~ '_id']].name }}</p>
+  {% if change.reason %}<p class="preformatted">{{ change.reason }}</p>{% endif %}
+  {% if not pending %}
+    <p><span class="pill">{{ 'Expired' if change.status == 'pending' else change.status|capitalize }}</span></p>
+    {% if change.charge_original %}<p>The tutor will charge for the original lesson.</p>{% endif %}
+  {% elif change.requested_by == g.user.role %}
+    <p class="meta">Awaiting a response.</p>
+    <form method="post">{{ csrf() }}<button class="button secondary" name="action" value="withdraw">Withdraw request</button></form>
+  {% else %}
+    <form method="post" class="form-stack">
+      {{ csrf() }}
+      {% if change.late and g.user.role == 'tutor' %}
+        <div class="warning"><strong>Late change</strong><p>The parent requested this change within 24 hours. You can charge for the original lesson.</p></div>
+        <label class="check"><input type="checkbox" name="charge_original" value="yes" data-requires-feedback> Charge the full price for the original lesson</label>
+        <label data-charge-feedback>Feedback for parent about the original lesson <span class="meta">(required if charged)</span>
+          <textarea name="parent_feedback" maxlength="4000" rows="3"></textarea>
+        </label>
+        <label>Feedback for student <span class="meta">(optional)</span>
+          <textarea name="student_feedback" maxlength="4000" rows="3"></textarea>
+        </label>
+      {% endif %}
+      <div class="form-actions">
+        <button class="button primary" name="action" value="approve">Approve change</button>
+        <button class="button secondary" name="action" value="decline" formnovalidate>Decline</button>
+      </div>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

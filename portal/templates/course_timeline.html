@@ -1,0 +1,17 @@
+{% from 'ui.html' import csrf %}
+{% if timeline %}
+  <ol class="course-timeline" data-course-timeline aria-label="Course timeline">
+  {% for goal in timeline %}
+    <li class="timeline-goal timeline-{{ goal.state }}" data-goal-id="{{ goal.id }}" {% if goal.state == 'current' %}data-current-goal aria-current="step"{% endif %}>
+      {% if g.user.role == 'tutor' %}
+      <form method="post" action="{{ url_for('planning.check_goal', topic_id=timeline_topic_id, goal_id=goal.id) }}" data-goal-toggle>
+        {{ csrf() }}
+        <input type="hidden" name="completed" value="{{ 'no' if goal.completed else 'yes' }}">
+        <button class="goal-check" type="submit" aria-label="Mark {{ goal.title }} {{ 'not achieved' if goal.completed else 'achieved' }}" role="checkbox" aria-checked="{{ 'true' if goal.completed else 'false' }}">{{ '✓' if goal.completed else '○' }}</button>
+      </form>
+      {% else %}<span class="goal-check" aria-label="{{ 'Achieved' if goal.completed else 'Not yet achieved' }}">{{ '✓' if goal.completed else '○' }}</span>{% endif %}
+      <div><time datetime="{{ goal.due_date }}">{{ goal.due_at|stamp('date') }}</time><strong>{{ goal.title }}</strong>{% if goal.state == 'current' %}<span class="pill">Current agenda</span>{% endif %}</div>
+    </li>
+  {% endfor %}
+  </ol>
+{% else %}<p class="meta">No timeline goals yet.</p>{% endif %}

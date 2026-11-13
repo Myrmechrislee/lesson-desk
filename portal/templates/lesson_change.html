@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, empty, header, time_range %}
+{% block title %}Request lesson change · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('lessons.index'), 'Lessons') }}
+{{ header('Request a new time', zone_name) }}
+<section class="panel form-panel">
+  <p class="current-slot"><strong>{{ names[lesson.student_id].name }} · {{ lesson.title }}</strong><span>{{ lesson.start_at|stamp('day') }}, {{ time_range(lesson.start_at, lesson.end_at) }}</span></p>
+  {% if pending %}
+    <p>There’s already a pending request for this lesson.</p>
+    <a class="text-link" href="{{ url_for('lessons.review', change_id=pending._id) }}">View request <span aria-hidden="true">↗</span></a>
+  {% else %}
+    {% if late_notice %}<div class="warning" role="note"><strong>Late change</strong><p>{{ late_notice }}</p></div>{% endif %}
+    <div class="toolbar week-nav change-week-nav">
+      <div><h2>Times available for both tutor and student</h2><small>{{ calendar_week.strftime('%d %b %Y') }} – {{ last_day.strftime('%d %b %Y') }}</small></div>
+      <nav aria-label="Available lesson times week">
+        <a class="button secondary compact" href="{{ url_for('lessons.change', lesson_id=lesson._id, date=previous_week) }}" aria-label="Previous week">←</a>
+        <a class="button secondary compact" href="{{ url_for('lessons.change', lesson_id=lesson._id, date=today) }}">This week</a>
+        <a class="button secondary compact" href="{{ url_for('lessons.change', lesson_id=lesson._id, date=next_week) }}" aria-label="Next week">→</a>
+      </nav>
+    </div>
+    <form method="get" class="date-check">
+      <label>Go to week containing<input type="date" name="date" value="{{ day }}" required></label>
+      <button class="button secondary">Show week</button>
+    </form>
+    <p class="meta" id="change-calendar-help">Choose a start time in the weekly calendar. Each option fits this lesson’s duration and this student's calendar set by their parent, including temporary availability. Times already booked by the tutor or student are marked unavailable, including the tutor’s lessons with other students. Labels identify hours preferred by the tutor, student, or both.</p>
+    {% if has_slots or has_bookings %}
+      <form method="post" class="form-stack">
+        {{ csrf() }}
+        <div class="calendar-scroll change-calendar-scroll" data-calendar-scroll>
+          <table class="availability-calendar change-calendar" aria-describedby="change-calendar-help">
+            <caption class="sr-only">Mutually available start times for this lesson in {{ zone_name }}</caption>
+            <thead><tr><th scope="col">Time</th>{% for calendar_day in calendar_days %}<th scope="col">{{ calendar_day.strftime('%a') }}<small>{{ calendar_day.strftime('%d %b') }}</small></th>{% endfor %}</tr></thead>
+            <tbody>
+            {% for row in calendar_hours %}
+              <tr data-calendar-hour="{{ row.label }}"><th scope="row">{{ row.label }}</th>
+              {% for slots in row.cells %}<td class="calendar-slots">
+                {% for label in row.booked[loop.index0] %}<span class="calendar-booked">{{ label }} · Booked · unavailable</span>{% endfor %}
+                {% for value, label in slots %}<label class="calendar-slot"><input type="radio" name="starts_at" value="{{ value }}" required><span>{{ label }}</span><span class="sr-only"> on {{ value[:10] }}</span></label>{% endfor %}
+              </td>{% endfor %}</tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if has_slots %}
+        <p class="meta" data-slot-selection aria-live="polite">Select an available time to request.</p>
+        <label>Reason <span class="meta">(optional)</span><textarea name="reason" maxlength="1000" rows="3"></textarea></label>
+        {% if late_notice %}
+          <label class="check"><input type="checkbox" name="acknowledge_late" value="yes" required> I understand I may be charged for the original lesson.</label>
+        {% endif %}
+        <div class="form-actions"><button class="button primary">Send request</button></div>
+        {% else %}<p class="meta">No mutual available times this week. Choose another week or update availability.</p>{% endif %}
+      </form>
+    {% else %}
+      {{ empty('No mutual available times this week.', 'Choose another week, or update availability. The tutor and this student must have available hours before a change can be requested.') }}
+      {% if g.user.role == 'parent' %}<a class="text-link" href="{{ url_for('lessons.availability', week=calendar_week, student_id=lesson.student_id) }}">Set this student's availability</a>{% else %}<p class="meta">Ask the parent to set this student's availability, and check your own hours.</p><a class="text-link" href="{{ url_for('lessons.availability', week=calendar_week) }}">Check your availability</a>{% endif %}
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

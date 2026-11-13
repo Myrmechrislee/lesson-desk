@@ -1,0 +1,36 @@
+{% macro device_button(kind, label) -%}
+<button type="button" class="call-icon-button" data-call-toggle="{{ kind }}" aria-label="Turn {{ label }} off" aria-pressed="true" title="Turn {{ label }} off">
+  {% if kind == 'video' %}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="2"/><path d="m15 10 6-3v10l-6-3"/><path class="call-icon-slash" d="m3 3 18 18"/></svg>{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/><path class="call-icon-slash" d="m3 3 18 18"/></svg>{% endif %}
+</button>
+{%- endmacro %}
+{% if call_enabled %}
+<section class="board-call" data-call data-session="{{ url_for('calls.session', lesson_id=lesson._id) }}" data-signals="{{ url_for('calls.signals', lesson_id=lesson._id) }}" data-token="{{ csrf_token() }}" data-ice="{{ call_ice_servers|tojson|forceescape }}" aria-label="Lesson call">
+  <div class="call-dock">
+    <p class="call-connection" data-call-summary role="status" hidden></p>
+    <div class="call-videos" data-call-videos aria-label="Call participants" hidden>
+      <figure class="call-tile" data-call-self-tile><video autoplay muted playsinline data-call-self></video><div class="call-audio-avatar" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></div><figcaption>You</figcaption></figure>
+    </div>
+    <div class="call-toolbar" role="toolbar" aria-label="Call controls">
+      <button type="button" class="button primary" data-call-open>Join call</button>
+      <span class="call-active-controls" data-call-active-controls hidden>{{ device_button('video', 'camera') }}{{ device_button('audio', 'microphone') }}<button type="button" class="call-icon-button" data-call-open aria-label="Call settings" title="Call settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 3v8M16 13v8"/></svg></button><button type="button" class="button danger" data-call-leave>Leave</button></span>
+    </div>
+    <p class="call-network" data-call-network role="alert" hidden></p>
+  </div>
+  <dialog class="call-dialog" data-call-dialog aria-labelledby="call-dialog-title">
+    <div class="call-dialog-heading"><h2 id="call-dialog-title">Camera & microphone</h2><button type="button" class="call-dialog-close" data-call-close aria-label="Close call settings">×</button></div>
+    <p class="call-status" data-call-status role="status">Starting your default camera and microphone…</p>
+    <div class="call-preview"><video autoplay muted playsinline data-call-preview-video></video></div>
+    <div class="call-device-toggles">{{ device_button('video', 'camera') }}{{ device_button('audio', 'microphone') }}<span>Camera · Microphone</span></div>
+    <div class="call-settings">
+      <label>Camera source<select data-call-video-source><option value="">Default camera</option></select></label>
+      <label>Microphone source<select data-call-audio-source><option value="">Default microphone</option></select></label>
+      <label>Microphone level <meter min="0" max="1" value="0" data-call-meter></meter></label>
+      <p class="call-warning" data-call-silence role="status" hidden>No sound detected. Speak to test your microphone, check its source, or turn your microphone off.</p>
+      <div class="form-actions"><button type="button" class="button secondary" data-call-test-audio>Test speaker</button><button type="button" class="button secondary" data-call-record disabled>Record microphone test</button></div>
+      <audio data-call-playback controls hidden></audio>
+      <p class="meta">Devices apply automatically. Microphone tests stay in this browser. Use headphones to prevent echo.</p>
+      <div class="form-actions"><button type="button" class="button secondary" data-call-close>Cancel</button><button type="button" class="button primary" data-call-join>Join lesson call</button></div>
+    </div>
+  </dialog>
+</section>
+{% endif %}

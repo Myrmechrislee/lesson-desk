@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import header %}
+{% block title %}{{ status }} · Lesson Desk{% endblock %}
+{% block content %}
+<div class="error-card panel narrow">
+  {{ header('Page unavailable' if status in [403, 404] else 'There was a problem') }}
+  <p>{{ message }}</p>
+  <a class="button secondary" href="{{ url_for('home') }}">{{ 'Return to dashboard' if g.user else 'Return to sign in' }}</a>
+</div>
+{% endblock %}

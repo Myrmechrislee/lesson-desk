@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, empty, header %}
+{% block title %}Student links · Lesson Desk{% endblock %}
+{% block content %}
+{{ header('Students & topics', 'Link families and tutors, and set a separate lesson rate for each topic.') }}
+<div class="balanced-columns">
+  <section class="panel form-panel">
+    <h2>Link parent</h2>
+    {% if directory.student %}
+      <form method="post" class="form-stack" action="{{ url_for('accounts.link_parent') }}">
+        {{ csrf() }}
+        <label>Student
+          <select name="student_id" required><option value="">Choose a student</option>{% for user in directory.student %}<option value="{{ user._id }}">{{ user.name }}</option>{% endfor %}</select>
+        </label>
+        <label>Parent
+          <select name="parent_id"><option value="">No parent</option>{% for user in directory.parent %}<option value="{{ user._id }}">{{ user.name }}</option>{% endfor %}</select>
+        </label>
+        <div class="form-actions"><button class="button primary">Save parent link</button></div>
+      </form>
+    {% else %}{{ empty('Create a student account first.') }}{% endif %}
+  </section>
+  <section class="panel form-panel">
+    <h2>Add a learning topic</h2>
+    {% if directory.student and directory.tutor %}
+      <form method="post" class="form-stack" action="{{ url_for('accounts.link_tutor') }}">
+        {{ csrf() }}
+        <label>Student
+          <select name="student_id" required><option value="">Choose a student</option>{% for user in directory.student %}<option value="{{ user._id }}">{{ user.name }}</option>{% endfor %}</select>
+        </label>
+        <label>Tutor
+          <select name="tutor_id" required><option value="">Choose a tutor</option>{% for user in directory.tutor %}<option value="{{ user._id }}">{{ user.name }}</option>{% endfor %}</select>
+        </label>
+        <label>Topic<input name="topic" maxlength="100" placeholder="Year 7 Mathematics, Chinese…" required><small>Each topic has its own rate, weekly target and bookings.</small></label>
+        <label>Rate per lesson (AUD)<input type="number" min="0" max="99999.99" step="0.01" name="rate" required></label>
+        <div class="form-actions"><button class="button primary">Save topic</button></div>
+      </form>
+    {% else %}{{ empty('Create a student and a tutor account first.') }}{% endif %}
+  </section>
+</div>
+<section class="panel">
+  <div class="panel-head"><h2>Linked students</h2></div>
+  {% if directory.student %}
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Student</th><th scope="col">Parent</th><th scope="col">Topics, tutors & rates</th></tr></thead>
+      <tbody>
+      {% for student in directory.student %}
+        <tr>
+          <td><strong>{{ student.name }}</strong></td>
+          <td>{{ names.get(student.parent_id, 'Unlinked') }}</td>
+          <td>
+            {% for row in enrollments if row.student_id == student._id %}
+              <details class="topic-editor">
+                <summary>{{ row.topic or 'General lessons' }} · {{ names[row.tutor_id] }} · {{ row.rate_cents|money }}</summary>
+                <form method="post" class="form-stack" action="{{ url_for('accounts.link_tutor') }}">
+                  {{ csrf() }}
+                  <input type="hidden" name="student_id" value="{{ student._id }}">
+                  <input type="hidden" name="tutor_id" value="{{ row.tutor_id }}">
+                  <input type="hidden" name="topic_id" value="{{ row._id }}">
+                  <label>Topic<input name="topic" value="{{ row.topic or 'General lessons' }}" maxlength="100" required></label>
+                  <label>Rate per lesson (AUD)<input type="number" name="rate" value="{{ '%.2f'|format(row.rate_cents / 100) }}" min="0" max="99999.99" step="0.01" required></label>
+                  <button class="button secondary compact">Save topic & rate</button>
+                </form>
+                <form method="post" action="{{ url_for('accounts.remove_topic', topic_id=row._id) }}">
+                  {{ csrf() }}
+                  <p class="meta">Removing this link keeps existing lessons and invoices, and stops adding automatic weekly lessons.</p>
+                  <button class="button danger compact">Remove topic link</button>
+                </form>
+              </details>
+            {% else %}Unlinked{% endfor %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  {% else %}{{ empty('No student accounts yet.') }}{% endif %}
+</section>
+{% endblock %}

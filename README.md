@@ -1,0 +1,167 @@
+# Lesson Desk
+
+A Flask and MongoDB portal for tutors, families, and students. Auth0 Universal Login authenticates accounts. MongoDB stores application roles, student links, schedules, lesson whiteboards and uploads, feedback, homework files, sessions, reminder deliveries, and invoice PDFs. The app looks up the role and account relationships for each protected request.
+
+## Run locally
+
+### Configure Auth0
+
+1. Create a **Regular Web Application** with an Auth0 database connection. Enable the connection for the web application. Use an RS256-signed OpenID Connect ID token.
+2. In that application's settings, add `http://localhost:3001/auth/callback` to **Allowed Callback URLs** and `http://localhost:3001/` to **Allowed Logout URLs**. The trailing slash in the logout URL matters.
+3. Create a **Machine to Machine Application** and authorize it for the Auth0 Management API with `read:users`, `create:users`, `update:users`, and `create:user_tickets`. Enable the same database connection for this client. Use the Auth0 tenant hostname and the credentials for each application in the corresponding `AUTH0_*` variables.
+4. Turn off public sign-ups on the portal's database connection. If you use a dedicated test tenant, check its welcome email settings before provisioning test addresses. For an HTTPS deployment, set the web application's **Application Login URI** to the deployed `/login` URL so users can return to sign in from Auth0's password setup page.
+
+If `AUTH0_DOMAIN` is a custom login domain, set `AUTH0_MANAGEMENT_AUDIENCE` to the **Identifier** under **Applications → APIs → Auth0 Management API**, such as `https://your-tenant.au.auth0.com/api/v2/`. Keep the trailing slash. Auth0 requires the default tenant domain in this identifier even when token requests and API calls use a custom domain. Using the custom domain as the audience causes HTTP 403 with “Service not enabled within domain.” With a default Auth0 tenant domain, leaving this variable blank uses `https://AUTH0_DOMAIN/api/v2/`. See [Auth0's explanation of this error](https://support.auth0.com/center/s/article/Service-not-enabled-within-domain).
+
+[Auth0 Flask guide](https://developer.auth0.com/resources/guides/web-app/flask/basic-authentication) · [Account setup tickets](https://support.auth0.com/center/s/article/Invite-users-created-by-the-Management-API) · [OIDC logout configuration](https://support.auth0.com/center/s/article/Error-invalid-request-The-post-logout-redirect-uri-querystring-parameter-XXX-is-not-defined-as-a-valid-URL-in-Allowed-Logout-URLs)
+
+### Enable student usernames without email
+
+Use the same connection for adult email accounts and student username accounts. In a development tenant first:
+
+1. Open **Authentication → Database → your connection → Attributes**. For an existing connection, choose **Activate** if shown.
+2. Configure **Email**: enable **Use Email as Identifier**, set **Allow Signup with Email** to **Optional**, and turn off **Require email on user profile**. Keep email enabled so existing adult accounts can still sign in.
+3. Add/configure **Username**: enable **Use Username as Identifier**, set **Allow Signup with Username** to **Optional**, and turn off **Require username on user profile** so adults do not need usernames. Set the length to allow 3–15 characters. Save.
+4. Keep password authentication enabled and public sign-ups disabled. Enable the connection for both portal applications. Test adult email and student username login before applying to production.
+
+These are Auth0's [Flexible Identifiers settings](https://auth0.com/docs/authenticate/database-connections/activate-and-configure-attributes-for-flexible-identifiers), which support identifiers independently of profile requirements. The portal requires a username for new students and an email for adults. Enabling the older **Requires Username** option alone does not remove the email requirement. Auth0's [username-only account guidance](https://support.auth0.com/center/s/article/Is-it-possible-to-create-users-using-username-and-password-instead-of-the-email-password-combination) confirms Flexible Identifiers supports accounts with no email or phone.
+
+Use New Universal Login; Auth0 documents Flexible Identifiers as [generally available with limitations](https://auth0.com/docs/authenticate/database-connections/flexible-identifiers-and-attributes), including the Universal Login requirement. No paid-plan requirement is specified in that documentation. If the Attributes controls are missing in your tenant, check availability with Auth0 support before provisioning username-only accounts.
+
+Run `flask --app portal init-db` after upgrading to replace the old email-only unique index and add the username index. In **Accounts**, enter a username and choose **Save username** for an existing student who does not yet have one. Once saved, usernames cannot be renamed in the portal. The app updates that student's existing Auth0 user; their password, student links, lessons, and homework remain attached to the same subject. Existing email logins still work. Grant `update:users` to the Management API client for this operation. If Auth0 fails, the username remains reserved and marked pending; save the same username again after fixing the connection or permission. A confirmed Auth0 username conflict releases the reservation so you can choose another.
+
+Share the student's **Setup link** with their parent so they can choose a password. Username-only students cannot receive email reset messages; administrators can generate a new link after confirming the family's identity. The portal uses [password-change tickets addressed by Auth0 user ID](https://auth0.com/docs/api/management/v2/tickets/post-password-change). Sign-in authorization always uses the verified Auth0 subject, never a matching username or email claim.
+
+### Start the app
+
+```bash
+cp .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Set `SECRET_KEY` to the generated value and fill in the Auth0 variables in `.env`. `APP_TIMEZONE` is an IANA timezone for the timetable, lesson reminders, and invoice due dates. The example uses `Asia/Shanghai`.
+
+```bash
+docker compose up --build -d
+docker compose ps
+```
+
+Open [Lesson Desk](http://localhost:3001). The local stack includes a single-node MongoDB replica set, the Flask web process, a background worker for bookings, invoices, and lesson reminders, and a [Mailpit inbox](http://localhost:8025). The replica set enables scheduling and invoicing transactions and live photo updates. Mailpit captures invoice and lesson reminder emails on your machine.
+
+Opening the other local address (`localhost` or `127.0.0.1`) redirects to `APP_BASE_URL` so sign-in sessions and the Auth0 callback use the same hostname.
+
+The MongoDB service sets `GLIBC_TUNABLES=glibc.pthread.rseq=1` to use per-thread allocator caches. This works around the [MongoDB allocator incompatibility with Linux kernels 6.19–7.0.13](https://jira.mongodb.org/browse/SERVER-121912), including affected Docker Desktop kernels. It preserves the existing database volume, with a potential allocator performance cost. After upgrading Docker Desktop to a kernel fixed in 7.0.14 or later and using MongoDB 8.0.30 or later, you can remove this setting to restore per-CPU caches. If an existing container failed with this kernel error, run `docker compose up -d --wait` to recreate it with the updated configuration.
+
+### Provision the test accounts
+
+Run this in a development tenant and database. Choose a password that meets the connection's password policy when prompted.
+
+```bash
+docker compose exec web flask --app portal seed-demo
+```
+
+| Role | Default sign-in identifier |
+| --- | --- |
+| Admin | `demo-admin@example.test` |
+| Tutor | `demo-tutor@example.test` |
+| Parent | `demo-parent@example.test` |
+| Student | `demo-student` (username; no email) |
+
+The command creates the four users in Auth0 and adds a linked tutor, parent and student, weekly hours, a scheduled lesson, an uninvoiced completed lesson, and a homework assignment to MongoDB. Rerunning it reuses the accounts and fixture. Pass `--email-domain your-test-domain.example` if your tenant uses a different domain, or `--student-username another-name` for a different student username. For a database seeded before username support, first save `demo-student` as the original demo student's username in **Accounts**; this keeps the existing fixture. To switch accounts, choose **Sign out**, finish signing out of Auth0, then choose **Continue with Auth0** and enter the other account's credentials. The portal requests a fresh login so Auth0 does not silently reuse the previous account. Use separate browser profiles to exercise multiple roles together.
+
+For a fresh operational database, provision the first administrator and give them the returned password setup link.
+
+```bash
+docker compose exec web flask --app portal bootstrap-admin \
+  --name "Portal Admin" --email "admin@your-domain.example"
+```
+
+Administrators create other accounts, share their setup links, and manage student links and learning topics from the portal. Each student can be linked to one parent and multiple tutors. One parent can have multiple students. In **Students & topics**, add topics such as **Year 7 Mathematics** and **Chinese**, each with its own tutor, AUD lesson rate, and weekly target. Open an existing topic to edit its name or rate. Existing booked lessons keep their recorded rates; newly created lessons use the current topic rate.
+
+### Give an existing Auth0 user access
+
+Users in the same Auth0 tenant and database connection can use their existing credentials across applications. Enable that connection for the Lesson Desk **Regular Web Application** under **Applications → Applications → Lesson Desk → Connections** (or the connection's **Applications** tab). `AUTH0_CONNECTION` must name that database connection, and `AUTH0_DOMAIN` must refer to the same tenant. See [Auth0's connection configuration guidance](https://support.auth0.com/center/s/article/Enabling-Multiple-Database-Connections-for-a-Single-Application).
+
+Sign in as an administrator, open **Accounts → Link an existing Auth0 account**, and enter the existing email, a display name, and the Lesson Desk role to grant. For example, enter `christophelee2004@icloud.com` and choose the role that account should have in this demo. Choose **Grant portal access**, then sign in with that account's existing password. If more than one identity matches, supply its **User ID** from **Auth0 → User Management → Users**. The portal verifies the identity against the [Auth0 Management API](https://auth0.com/docs/manage-users/user-search/get-users-by-id-or-email), using the existing `read:users` permission.
+
+If you need to add the first administrator without signing in to the portal, use:
+
+```bash
+docker compose exec web flask --app portal link-auth0-user \
+  --name "Christophe Lee" --email "christophelee2004@icloud.com" --role admin
+```
+
+This explicitly links the verified Auth0 user ID to a local role. It does not create another Auth0 user, reset a password, or change metadata used by other apps. It can also finish an inactive, pending portal account left by an earlier attempt to create an account for that email. Already active portal accounts must use the directory's role controls. Sign-in still checks the verified subject rather than automatically trusting an email match. Users in a different tenant need a separate identity setup; enabling a connection only shares users within its tenant.
+
+## Workflows
+
+| Role | Actions |
+| --- | --- |
+| Admin | Create or link existing Auth0 users, assign roles, and link students to parents and tutors. Set a separate AUD lesson rate for each learning topic. Add, edit, and remove shared announcements and attachments. Edit saved invoices, resend their PDFs, and retry stopped invoice email deliveries. |
+| Tutor | Set weekly lesson targets for each topic, schedule single or repeating lessons, edit weekly availability and preferred hours, and request or review changes using mutual availability. Record completion with required parent feedback and optional student feedback, or cancellation with a reason. Attach assignment files, see submissions live, grade and complete homework with optional marked files and feedback, and create, edit, and resend invoices. Use shared lesson whiteboards, subscribe to the lesson calendar, and manage shared announcements. |
+| Parent | Set separate weekly and temporary availability and preferred hours for each student. Read announcements and see unread counts. View upcoming and past lessons with parent feedback, request or review changes, and download invoices. View all linked children's homework and their submissions and marking; upload and submit completed work on a child's behalf. Use lesson whiteboards and subscribe to the family lesson calendar. |
+| Student | Sign in with a username, view assignments and tutor attachments, upload documents or photos, remove submitted files, submit completed work, and read student feedback and returned marking. Use lesson whiteboards and subscribe to their lesson calendar. |
+
+- Tutors edit their own repeating and temporary hours on a compact weekly calendar. Parents choose a student in **Availability** and set that student’s separate hours and preferences; switching students preserves each calendar. Students inherit earlier shared family hours until their parent first customizes their calendar. After customization, their own calendar applies, including an empty calendar with no available hours. The full 24-hour grid uses colour, half-hour cells, labels every two hours, and a vertical editor alongside it on wider screens. Select a coloured cell or an interval in the editor to edit or remove hours. Temporary intervals default to one hour and can be adjusted. Preferred hours remain bookable alongside other available hours; temporary unavailability takes precedence over weekly, extra, and preferred hours. New bookings and change requests use the selected student’s hours together with the tutor’s hours. Both calendars and mutual start times update when the tutor chooses another student. Submission and approval recheck the full duration, repeats, availability, and bookings. Both the student and tutor are protected from overlapping bookings. Occupied times, including the tutor’s other students’ lessons, appear as unavailable in booking previews and change calendars without exposing those students’ details.
+- Administrators can remove a topic link in **Students & topics**. This stops adding automatic weekly lessons for that topic while preserving recorded lessons and invoices.
+- New bookings default to **Weekly, until stopped**. Each topic can have separate weekly sessions and targets. Ongoing bookings preserve the local weekday and time, reserve future weeks, and automatically keep at least twelve weeks of lessons ahead through the worker and calendar views. Every new occurrence is checked against current availability and bookings. If a future week cannot be created, a visible reminder explains the problem; correct availability to resume, or stop the booking and choose a new time. **Stop weekly booking** removes its future scheduled lessons and withdraws their pending change requests; finalized lessons remain. Single lessons and a fixed run of 1–52 weeks are also available.
+- Open **Whiteboard** from any lesson for a full-page board with a visible grid, lesson date/title/student, and current viewers. Pen strokes, text, and object moves are shared during editing, then saved with revision conflict handling. The pen has colour/thickness presets, a thickness slider, and a personal colour row saved per account in this browser. Select the pen or Shapes to open drawing settings; clicking the canvas fades the panel away. Shapes include rectangles, squares, ellipses, circles, triangles, pentagons, hexagons, and octagons, with border colour/thickness and optional fill. Escape returns to Move: drag empty space to pan, objects to move them, or Shift-drag to select an area. Shift straightens pen strokes (snapping near horizontal/vertical), constrains rectangles/ellipses to squares/circles, and snaps lines to 45° increments. The **?** menu lists shortcuts, including undo/redo, copy/paste, duplication, deletion, and zoom. Templates include blank Cartesian axes, a Cartesian plane numbered −10 to 10 on both axes, empty circular-function axes, an empty unit circle, and an empty two-way table. Drag PDFs or images onto the board, or use **PDF / image**. Every PDF page becomes an annotatable board image. Files can be up to 8 MB, PDFs up to 40 pages, and each lesson can retain up to 200 uploaded pages and images. **Download PNG** includes the lesson date and student name in the filename and exports all board content, including content outside the current view; larger boards are scaled to fit a maximum of 32 megapixels. Live presence expires after 30 seconds without a heartbeat; abandoned previews expire after eight seconds. Saved content remains until removed.
+- Open **Calendar subscription** to create a private iCal URL for Apple Calendar, Google Calendar, Outlook, or another calendar app. Tutors see their lessons, students see their own lessons, and parents see lessons for their currently linked children. Subscribe by URL for updates; **Download iCal file** imports a snapshot. Feeds include the previous 90 days and upcoming lessons, extend ongoing bookings at least twelve weeks ahead, and reflect cancellations and time changes. Calendar apps choose their refresh interval. **Regenerate link** invalidates the old URL, and **Revoke link** disables the subscription. Anyone with the private URL can read its lesson names and times.
+- The existing worker queues an email when a scheduled lesson is within the next 24 hours. On Sundays at 18:00 in `APP_TIMEZONE`, it queues a summary for the coming Monday–Sunday. Tutors, linked parents, and students with email addresses receive their respective schedules; username-only students receive reminders through their parent. Delivery records prevent routine duplicate reminders. The worker checks the current lesson and account links before sending, skips cancelled or rescheduled reminders, retries mail failures up to three times, and records the delivery state. Missing SMTP configuration does not consume attempts. Both reminder types require the worker to keep running and the same SMTP settings used for invoices.
+- Setup banners appear across signed-in pages when weekly availability, required billing details, student links or learning topics are missing. Parents see missing availability separately for each student, with a link to that student’s calendar. Tutors and administrators also see reminders about stopped email deliveries or weekly bookings requiring attention.
+- Administrators and tutors can publish, edit, or remove shared announcements and attach PDF, Word, UTF-8 text files or photos. Upload up to five files per request, each up to 8 MB; an announcement can retain up to twenty attachments. Parents can download them from the announcement. The latest three announcements appear on the lessons page. Announcements are shared with all parents, so use them for general updates. The navigation shows a counter for unread announcements. Opening the announcement list or an individual announcement marks the displayed content as read; editing an announcement makes its new version unread again. **Important announcement → Pop up next time parents open the website** shows a dialog for each parent. Choosing **Close**, pressing Escape, or opening the full announcement records that version as read, and this persists across sessions. There is no separate **Mark as read** button. Saving with the pop-up option checked creates a new version for parents to see. **Show as a banner** adds start and end times in the configured timezone; only the title and a **Read more** link appear in the banner, and it disappears automatically at the end time.
+- A parent requesting a change less than 24 hours before the original start must acknowledge the contract warning. The tutor can waive the charge or bill the original lesson in full. When charged, the original time remains a separate invoice line and the new lesson is scheduled separately. An approved change without a charge moves the existing booking.
+- The outcome form adapts to the selection. **Completed** shows required parent feedback and optional student feedback. **Cancelled** shows an optional cancellation reason and the late-cancellation charge option when applicable. **Didn't attend** needs no feedback and can only be recorded after the scheduled end. Tutors can record completion before the scheduled end time when a lesson was held early. Each audience sees its own feedback. Previously saved single-field feedback remains visible to the student. Parents can open **Past lessons & feedback** to read parent feedback. Completed lessons and no-shows use the full lesson rate. Only cancellations made less than 24 hours before the start can be charged at the tutor's discretion; exactly 24 hours or earlier is free. Editing a cancellation preserves the original cancellation time.
+- Tutors can attach assignment resources and grade completed homework. Marked files, grades, and written feedback are optional. A tutor can explicitly choose **Completed offline** to mark homework completed and grade it even if the student or parent has not submitted any files or notes; families see that the tutor recorded completion offline. Submissions can contain photos, PDF, Word (.doc or .docx), UTF-8 text files, and written notes. Upload up to five files per request, each up to 8 MB. Students and linked parents can remove submission attachments. Adding/removing files or saving revised notes reopens the homework for completion; earlier grades, marked files, and feedback remain available and are labeled as belonging to an earlier submission.
+- Each invoice includes every finalized, uninvoiced lesson for the selected parent and tutor, across that parent's children. The PDF uses the tutor's ABN and contact details and lists lesson times and amounts. It excludes feedback, cancellation reasons, and lesson outcomes. Paid invoices are tracked separately from overdue invoices. An unpaid balance becomes overdue after the due date in the configured timezone.
+- Tutors can open **Edit invoice** for their own past invoices; administrators can edit any invoice. Update recipient and supplier details, due date, payment status and instructions, notes, lesson line descriptions, times, and amounts. Add positive adjustments or negative credits, with the total recalculated from all lines. Lesson links remain attached to the original invoice. **Save changes** regenerates the saved PDF, and **Save and resend PDF** also queues the revised invoice for email. **Resend PDF** in invoice history queues the current PDF again. Editing and resending wait while an email is being sent, and concurrent edits require a reload. Stopped invoice deliveries still require an administrator to resume them.
+- The worker automatically emails the saved PDF with a green-and-cream HTML summary and a plain-text alternative, including the total, due date, website link, and contact guidance. The visible From header, Reply-To header, and SMTP envelope sender all use `MAIL_FROM`, so invoice replies go to the configured sender address. The SMTP relay must authorize that sender address. Restart the worker after changing mail environment variables (recreate it when using Compose). Invoice history shows delivery progress and a reason whenever email has not been sent, including missing mail configuration or the SMTP failure. After three unsuccessful attempts, automatic delivery stops. An administrator opens **Email delivery → Retry email** to resume with up to three further attempts; tutors and parents cannot resume stopped deliveries. Missing mail configuration does not consume attempts. Expired worker leases count toward the three-attempt limit. MongoDB transactionally assigns each lesson to at most one invoice.
+
+## Deploy with your own services
+
+Run `flask --app portal init-db` once with the production environment, then run the web process and the worker against the same database. After this upgrade, `init-db` labels earlier tutor–student links **General lessons**, associates their existing lessons with that topic, preserves their rates and targets, and replaces the pair-only enrollment index with a topic-aware unique index. It also creates recurrence, whiteboard, announcement attachment/read-state, per-student availability, and reminder queue indexes. The existing `invoice-worker` command now handles lesson reminders as well as invoices and recurring bookings. Keep it running continuously, including Sunday evenings, so 24-hour reminders and the 18:00 weekly digest are queued on time. Keep it running even when email is disabled: it also extends ongoing weekly bookings. Use a MongoDB replica set or Atlas with a private authenticated connection. Configure the HTTPS origin in `APP_BASE_URL` and in the Auth0 callback and logout allowlists. Use an SMTP relay with `SMTP_SECURITY=starttls` or `ssl`, its required credentials, and an authorized `MAIL_FROM` address.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+flask --app portal init-db
+gunicorn --bind 0.0.0.0:3001 --workers 2 --threads 12 --timeout 60 'portal:create_app()'
+# In a separate process with the same environment:
+flask --app portal invoice-worker
+```
+
+Preserve the configured hostname in the reverse proxy's `Host` header. For the live homework feed, allow streaming responses through the proxy and disable response buffering for the homework live endpoints. The Compose database and mail catcher are configured for local development.
+
+## Lesson planning, calls, and discussions
+
+Tutors, parents, and students have a **Course plans** page with one plan per student's learning topic. Tutors can edit Markdown, attach resources, and set timeline goals with dates and no time field; families can read plans and download attached resources. The highlighted current goal follows the timeline, achieved goals are crossed out, and tutors can update their checkboxes. Tutors alone can download plan JSON or open the colored, copiable **Schema**. Downloaded JSON includes the text and timeline; attached files stay in the portal and are not embedded in exports. Tutors can import JSON to replace a plan; older exports with goal timestamps remain compatible. **Delete course plan** asks for confirmation before removing the plan, goals, resources, and course comments, while keeping the learning topic and lessons. Tutors can leave each lesson's separate Markdown agenda empty. Revision checks protect course and lesson plans against overwrites from another tab.
+
+Assignments, announcements, plans, and comments support Markdown with a formatting toolbar and preview. Rendered text passes through an HTML allowlist sanitizer. Comment bodies use a bordered box and serif font, with headings kept smaller than author names. Posting, replying, and editing share one editor; replying or editing highlights the selected comment and offers Cancel. Comment images use authenticated attachment routes, rather than arbitrary embedded image URLs. Comments support multiple replies, optional images, author-only editing, and an edited timestamp. Lesson and course comments notify the tutor; announcement comments notify administrators. Notifications appear in the sidebar and persist until read. Tutors and administrators can review all announcement threads; families only see discussions belonging to their household. Students can now read announcements and their attachments.
+
+Parents can cancel an upcoming lesson from its details. They see the consistency message, can try rescheduling, and can give an optional reason. Cancellation within 24 hours requires an additional acknowledgement of the contract terms. Cancellation takes effect immediately. The tutor sees a reminder on their next visit and must review the fee decision before the lesson can enter an invoice. Only late cancellations can be charged. Review uses the recorded cancellation time even when the tutor returns days later.
+
+Every non-cancelled lesson's whiteboard has **Join call** for its assigned tutor, student, and linked parent. Default devices begin preview and microphone testing automatically when the whiteboard loads, subject to browser permission. **Join call** opens camera and microphone settings in a popup on the same page; joining places small participant videos over the whiteboard. When a camera is off, a microphone icon pulses while that person speaks. Camera and microphone icon buttons toggle devices, and source selections apply immediately. Settings, a microphone level, speaker test, and a short local microphone recording remain available during a call. A silence warning appears after seven seconds without microphone input while the mic is on. Network warnings cover offline/interrupted signaling and low bandwidth, latency, or packet loss. Native WebRTC uses compressed Opus audio and VP8 video when supported, low resolution/frame rates, and reduced video bitrate under poor conditions to favor audio. Media travels encrypted between browsers; the portal stores only expiring call presence and signaling. Microphone test recordings stay in the browser. Camera/mic access requires HTTPS outside localhost.
+
+Configure `CALL_ICE_SERVERS` as a JSON array of WebRTC ICE servers. The default public STUN server supports ordinary networks. For reliable calls across restrictive firewalls/NAT, configure your TURN relay with `CALL_TURN_URLS` (comma-separated `turn:`/`turns:` URLs) and `CALL_TURN_SECRET` (coturn shared secret). The server issues temporary per-user credentials; it never sends the shared secret to the browser. Alternatively supply an appropriate ICE server configuration in `CALL_ICE_SERVERS`. Call media quality depends on participants' networks and devices.
+
+Students and parents can open lesson whiteboards only once the scheduled lesson start time arrives; this restriction also applies to the integrated call, state, live updates, exports, and resources. Tutors can prepare boards earlier. The select tool uses the normal pointer and navigation uses scrolling/zooming without a separate pan tool. Pen strokes are smoothed automatically. Both Cartesian templates include a grid; the empty version omits numbers. Templates also include a two-set Venn diagram. Whiteboard text recognizes `$…$`, `$$…$$`, `\\(…\\)`, `\\[…\\]`, and TeX commands using a locally bundled MathJax renderer. The text editor shows a private live preview when LaTeX is detected and hides that panel for ordinary text.
+
+### Optional AI drafting
+
+Set `OPENROUTER_API_KEY` on the server to enable tutor-triggered drafting. `OPENROUTER_PLAN_MODEL` defaults to `google/gemini-2.5-flash-lite`; `OPENROUTER_FEEDBACK_MODEL` defaults to `google/gemini-2.5-flash`. Both can be overridden independently with compatible models. The plan model receives the course plan and current goals. Feedback generation appears when **Completed** is selected and receives the saved lesson plan, course plan, whiteboard objects, and a rendered whiteboard snapshot. This material is sent to OpenRouter and its selected provider only when a tutor requests generation. Review generated drafts before applying and saving them. A loading animation appears while generation runs; failures preserve existing saved text. AI requests are limited per tutor to one request of each kind per minute. Without an API key, all manual planning and feedback workflows remain available.
+
+Run `flask --app portal init-db` after upgrading to create the new plan, discussion, notification, cancellation-review, call-presence/signaling, and AI-request indexes. Existing records remain compatible. New dependencies are listed in `requirements.txt`; rebuild the app image or install those requirements before restarting.
+
+[OpenRouter chat API](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request) · [WebRTC connections](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Connectivity) · [Markdown rendering](https://python-markdown.github.io/reference/) · [HTML sanitization](https://nh3.readthedocs.io/en/stable/)
+
+## Run the integration tests
+
+Use a disposable MongoDB replica set. Each test uses and removes its own randomly named test database. The suite substitutes a test identity provider and sends mail to a local SMTP fixture.
+
+```bash
+pip install -r requirements-test.txt
+TEST_MONGO_URI='mongodb://localhost:27017/?replicaSet=rs0' python -m pytest -q
+```
+
+[PyMongo transactions](https://www.mongodb.com/docs/languages/python/pymongo-driver/current/crud/transactions/) · [MongoDB change streams](https://www.mongodb.com/docs/manual/changestreams/) · [ABN check digits](https://abr.business.gov.au/Help/AbnFormat)

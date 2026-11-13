@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import empty, header %}
+{% block title %}Homework · Lesson Desk{% endblock %}
+{% block content %}
+{% set is_tutor = g.user.role == 'tutor' %}
+{% call header('Homework', 'All assignments for your children, including work in progress and completed homework.' if g.user.role == 'parent' else '') %}
+  {% if is_tutor %}<a class="button primary" href="{{ url_for('homework.new') }}">Assign homework <span aria-hidden="true">+</span></a>{% endif %}
+{% endcall %}
+{% if assignments %}
+  <section class="panel assignments" {% if is_tutor %}data-live-counts="{{ url_for('homework.live') }}"{% endif %}>
+    <div class="panel-head">
+      <h2>Assignments</h2>
+      {% if is_tutor %}<span class="live-indicator" role="status" data-live-label>Connecting</span>{% endif %}
+    </div>
+    {% for item in assignments %}
+      <a class="assignment-row" href="{{ url_for('homework.detail', homework_id=item._id) }}">
+        <div class="file-mark" aria-hidden="true"></div>
+        <div class="row-body"><strong>{{ item.title }}</strong>
+          <small>{{ names[item.student_id].name if is_tutor or g.user.role == 'parent' else names[item.tutor_id].name }}{% if g.user.role == 'parent' %} · {{ names[item.tutor_id].name }}{% endif %}{% if item.due_on %} · Due {{ item.due_on|day_label }}{% endif %}</small>
+          <small>{% if item.submitted_at and item.marked_at and item.marked_submission_at == item.submitted_at %}Marked · Completed{% if item.grade %} · Grade: {{ item.grade }}{% endif %}{% elif item.submitted_at %}Submitted for marking{% else %}In progress{% endif %}</small>
+        </div>
+        <span class="pill" data-assignment-count="{{ item._id }}">{{ counts[item._id] or 0 }} {{ 'file' if counts[item._id] == 1 else 'files' }}</span>
+        <span class="text-link" aria-hidden="true">↗</span>
+      </a>
+    {% endfor %}
+  </section>
+{% else %}
+  <section class="panel">{{ empty('No homework assigned.', 'Add an assignment to collect completed work.' if is_tutor else '') }}</section>
+{% endif %}
+{% endblock %}

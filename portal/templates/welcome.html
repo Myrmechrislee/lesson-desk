@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}Sign in · Lesson Desk{% endblock %}
+{% block content %}
+<div class="welcome-wrap">
+  <section class="welcome-card">
+    <a class="brand" href="{{ url_for('home') }}"><span class="brand-mark" aria-hidden="true"></span>Lesson Desk</a>
+    <h1>Sign in</h1>
+    <p>Access your lessons, homework, or invoices with the account provided by your administrator.</p>
+    <a class="button primary" href="{{ url_for('accounts.login') }}">Continue with Auth0 <span aria-hidden="true">→</span></a>
+  </section>
+  <div class="welcome-art" aria-hidden="true">
+    <div class="art-grid"><i></i><i></i><i></i><i></i><i></i></div>
+  </div>
+</div>
+{% endblock %}

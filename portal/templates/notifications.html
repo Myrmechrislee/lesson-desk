@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import header, csrf %}
+{% block title %}Notifications · Lesson Desk{% endblock %}
+{% block content %}
+{% call header('Notifications', 'Comments and replies') %}
+  <form method="post" action="{{ url_for('comments.read_all') }}">{{ csrf() }}<button class="button secondary">Mark all as read</button></form>
+{% endcall %}
+<section class="panel form-panel">
+{% for notice in notifications %}
+  <article class="notification-item">
+    <p>{% if not notice.read_at %}<span class="pill scheduled">New</span> {% endif %}{{ notice.message }}</p>
+    <p class="meta">{{ notice.created_at|stamp }}</p>
+    <form method="post" action="{{ url_for('comments.read_notification', notification_id=notice._id) }}">{{ csrf() }}<button class="button secondary">View discussion</button></form>
+  </article>
+{% else %}<p class="meta">No notifications yet.</p>{% endfor %}
+</section>
+{% endblock %}

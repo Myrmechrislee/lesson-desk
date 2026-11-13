@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, csrf, header %}
+{% from 'comments.html' import comment_panel with context %}
+{% block title %}{{ post.title }} · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('announcements.index'), 'Announcements') }}
+{% call header(post.title, author.name ~ ' · ' ~ (post.created_at|stamp)) %}
+  {% if g.user.role in ['admin', 'tutor'] %}<a class="button secondary" href="{{ url_for('announcements.edit', post_id=post._id) }}">Edit announcement</a>{% endif %}
+{% endcall %}
+<article class="panel form-panel">
+  {% if post.important %}<p><span class="pill cancelled_late">Important</span></p>{% endif %}
+  <div class="markdown-body">{{ post.body|markdown }}</div>
+  {% include 'announcement_files.html' %}
+</article>
+{{ comment_panel('announcement', post._id) }}
+{% endblock %}

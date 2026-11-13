@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ 'Your child’s Lesson Desk access' if student_access_only else 'Welcome to Lesson Desk' }}</title></head>
+<body style="margin:0;padding:0;background-color:#f5f6f0;color:#20352c;font-family:Arial,Helvetica,sans-serif;line-height:1.6;">
+  <table role="presentation" style="width:100%;border-collapse:collapse;background-color:#f5f6f0;">
+    <tr><td align="center" style="padding:32px 16px;">
+      <table role="presentation" style="width:100%;max-width:600px;border-collapse:separate;border-spacing:0;background-color:#fffefa;border:1px solid #dce3d9;border-radius:15px;overflow:hidden;">
+        <tr><td style="padding:28px 32px;background-color:#173a2f;color:#f5f7ef;">
+          <p style="margin:0;font-size:14px;font-weight:bold;letter-spacing:1px;">LESSON DESK</p>
+          <h1 style="margin:12px 0 0;font-family:Georgia,serif;font-size:32px;font-weight:normal;line-height:1.2;">{{ 'Your child’s account is ready' if student_access_only else 'Welcome to Lesson Desk' }}</h1>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <p style="margin:0 0 16px;">Hello {{ parent.name }},</p>
+          <p style="margin:0 0 24px;">{{ 'A student account has been linked to your family. Their sign-in details are below, along with a guide to lessons.' if student_access_only else 'Your parent account is ready. Lesson Desk brings your children’s schedules, lessons, progress and invoices together in one place.' }}</p>
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">1. Set up your parent account</h2>
+          {% if setup_url %}
+          <p style="margin:0 0 16px;">Use your private sign-up link to choose a password and finish setting up your account. The link can be used once and expires in 24 hours.</p>
+          <p style="margin:0 0 16px;"><a href="{{ setup_url }}" style="display:inline-block;padding:12px 22px;border-radius:8px;background-color:#235745;color:#fffefa;text-decoration:none;font-weight:bold;">Set up your account</a></p>
+          {% elif student_access_only %}
+          <p style="margin:0 0 16px;">Continue using your parent account. If you have not set your password yet, use the setup link in your welcome email.</p>
+          {% else %}
+          <p style="margin:0 0 16px;">Your existing Auth0 account now has access to Lesson Desk. Use your existing password; you do not need to sign up again.</p>
+          {% endif %}
+          <p style="margin:0 0 16px;">Then <a href="{{ links.login }}" style="color:#235745;font-weight:bold;">sign in to Lesson Desk</a> with <strong>{{ parent.email }}</strong>. If a setup link has expired or you need a fresh one, contact your administrator.</p>
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">2. Help your children sign in</h2>
+          {% if students %}
+          <p style="margin:0 0 16px;">Each child has their own account. Help them choose a password using their private setup link, then sign in using the identifier below.</p>
+          {% for student in students %}
+          <table role="presentation" style="width:100%;margin:0 0 12px;border-collapse:collapse;background-color:#eaf0e7;">
+            <tr><td style="padding:16px 20px;">
+              <p style="margin:0 0 4px;font-weight:bold;">{{ student.name }}</p>
+              <p style="margin:0 0 8px;">{{ 'Username' if student.username else 'Sign-in email' }}: <strong>{{ student.username or student.email }}</strong></p>
+              {% if student.setup_url %}<a href="{{ student.setup_url }}" style="color:#235745;font-weight:bold;">Set up {{ student.name }}’s account</a>{% else %}<p style="margin:0;">Ask your administrator for a password setup link.</p>{% endif %}
+            </td></tr>
+          </table>
+          {% endfor %}
+          <p style="margin:0 0 16px;">Student setup links can be used once and expire in 24 hours. Keep them private. After setup, children use the <a href="{{ links.login }}" style="color:#235745;font-weight:bold;">same sign-in page</a> with their own username and password. Sign out of your parent account first, or use a separate browser profile. Username-only students do not need an email address; ask your administrator for a fresh link if they forget their password.</p>
+          {% else %}
+          <p style="margin:0 0 16px;">No children are linked yet. Your administrator will link their accounts, and you will receive their usernames and private password setup links in a follow-up email. You can finish setting up your parent account now.</p>
+          {% endif %}
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">3. Set availability after signing in</h2>
+          <p style="margin:0 0 16px;">Open <a href="{{ links.availability }}" style="color:#235745;font-weight:bold;">Availability</a> in your parent account and choose a child under <strong>Availability for student</strong>. Add the times they can attend and choose <strong>Save weekly hours</strong>. Mark preferred times if helpful. Use <strong>Temporary availability</strong> for holidays, extra hours or time away, then <strong>Save temporary hours</strong>. Repeat for each child; their calendars are separate. Check the timezone shown on the page.</p>
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">4. Find and open a lesson</h2>
+          <p style="margin:0 0 16px;">Open <a href="{{ links.lessons }}" style="color:#235745;font-weight:bold;">Lessons</a> to see booked lessons. Choose the child and lesson, then <strong>Details</strong> to view the time, tutor, lesson plan and discussion. If no lessons appear, check with your tutor.</p>
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">5. Use the shared whiteboard</h2>
+          <p style="margin:0 0 16px;">When the scheduled lesson start time arrives, open its details and choose <strong>Open whiteboard</strong>. Parents and students can enter from that time onward. Use <strong>Pen</strong> to draw, <strong>Text</strong> to type and <strong>Select</strong> to move items. Scroll to move around and use the zoom controls or <strong>Fit all</strong> to adjust the view. You and the tutor see changes live. Add a PDF or image with <strong>PDF / image</strong>, and use <strong>Download PNG</strong> to save a snapshot.</p>
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">6. Join the lesson call</h2>
+          <p style="margin:0 0 16px;">In the whiteboard, choose <strong>Join call</strong>. Allow your browser to use the camera and microphone, check the preview and microphone level, choose your devices, then select <strong>Join lesson call</strong>. Use the camera and microphone buttons to switch them on or off, open call settings to change devices, and choose <strong>Leave</strong> when finished. Headphones help prevent echo.</p>
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">7. Reschedule a lesson</h2>
+          <p style="margin:0 0 16px;">From your parent account, open an upcoming lesson and choose <strong>Request change</strong>. Select an available time in the calendar, add an optional reason and choose <strong>Send request</strong>. Your tutor must approve the change; the original booking stays in place until it is approved. You can follow the request from Lessons. Requests made less than 24 hours before the lesson require acknowledgement that the original lesson may be charged.</p>
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">8. Cancel a lesson</h2>
+          <p style="margin:0 0 12px;">Open an upcoming lesson in your parent account and choose <strong>Cancel lesson</strong>. You can try rescheduling first. Add an optional reason, confirm your decision and choose <strong>Confirm cancellation</strong>. Cancellation takes effect immediately. A late cancellation also requires you to acknowledge the cancellation terms.</p>
+          <p style="margin:0 0 16px;padding:16px 20px;background-color:#eaf0e7;"><strong>Cancellations made less than 24 hours before the scheduled start may be charged at the full lesson rate, at the tutor’s discretion under your contract. Cancellations made at least 24 hours before the start are free.</strong></p>
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">9. Follow your children’s progress</h2>
+          <p style="margin:0 0 16px;">In <a href="{{ links.lessons }}" style="color:#235745;font-weight:bold;">Lessons</a>, choose <strong>Past lessons &amp; feedback</strong> and open a lesson’s feedback to read the tutor’s parent update. Visit <a href="{{ links.course_plans }}" style="color:#235745;font-weight:bold;">Course plans</a> for learning plans and goals, and <a href="{{ links.homework }}" style="color:#235745;font-weight:bold;">Homework</a> for assignments, completion, grades and tutor feedback as they become available.</p>
+
+          <h2 style="margin:24px 0 8px;font-size:20px;color:#173a2f;">10. Access invoices</h2>
+          <p style="margin:0 0 24px;">Open <a href="{{ links.invoices }}" style="color:#235745;font-weight:bold;">Invoices</a> in your parent account to check amounts, due dates and payment status. Choose <strong>Download</strong> beside an invoice to save its PDF. Invoice emails also include a download link; sign in to your parent account when prompted.</p>
+
+          <p style="margin:0 0 16px;">Need help? Reply to this email and we’ll help you get started.</p>
+          <p style="margin:0;">See you in Lesson Desk,<br><strong>The Lesson Desk team</strong></p>
+        </td></tr>
+        <tr><td style="padding:18px 32px;border-top:1px solid #dce3d9;color:#586a60;font-size:12px;">Lesson Desk · A little structure for a lot of progress.</td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

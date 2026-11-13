@@ -2,7 +2,7 @@ import secrets
 import json
 import re
 from datetime import timedelta
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.flask_client import OAuth
@@ -16,6 +16,7 @@ from .core import (
     ROLES, Problem, atomic, cents_field, db, email_field, lock_accounts,
     now, object_id, requires, text_field,
 )
+from .onboarding import enqueue_onboarding
 
 bp = Blueprint("accounts", __name__)
 
@@ -38,10 +39,27 @@ def configure_oidc(app):
     )
 
 
+def login_destination(value):
+    """Only return local paths, including after browser URL normalization."""
+    if not isinstance(value, str):
+        return url_for("home")
+    try:
+        parts = urlsplit(value)
+        path = unquote(parts.path)
+    except ValueError:
+        return url_for("home")
+    if (parts.scheme or parts.netloc or not path.startswith("/") or path.startswith("//")
+            or "\\" in path or any(ord(character) < 32 or ord(character) == 127 for character in unquote(value))):
+        return url_for("home")
+    return value
+
+
 @bp.get("/login")
 def login():
+    destination = login_destination(request.args.get("next"))
     if g.user:
-        return redirect(url_for("home"))
+        return redirect(destination)
+    session["login_next"] = destination
     try:
         return current_app.extensions["auth0"].authorize_redirect(
             current_app.config["APP_BASE_URL"] + url_for("accounts.callback"),
@@ -70,12 +88,13 @@ def callback():
     account = db().users.find_one({"auth0_sub": subject, "active": True}) if subject else None
     if not account:
         raise Problem("Ask your administrator to set up an account for this sign-in.", 403)
+    destination = login_destination(session.get("login_next"))
     session.clear()
     session["user_id"] = str(account["_id"])
     session["auth_expires_at"] = int((now() + current_app.permanent_session_lifetime).timestamp())
     session.permanent = True
     current_app.session_interface.regenerate(session)
-    return redirect(url_for("home"))
+    return redirect(destination)
 
 
 @bp.post("/logout")
@@ -241,10 +260,15 @@ def provision(name, email, role, *, management, username=None, password=None, re
 
     # Reserve the Mongo account first. The Auth0 marker allows a safe retry after a partial failure.
     subject = management.create_subject(record, password or f"Aa7!{secrets.token_urlsafe(36)}")
-    users.update_one(
-        {"_id": record["_id"], "active": False},
-        {"$set": {"auth0_sub": subject, "active": True}},
-    )
+    def activate(transaction):
+        result = users.update_one(
+            {"_id": record["_id"], "active": False},
+            {"$set": {"auth0_sub": subject, "active": True}}, session=transaction,
+        )
+        if result.matched_count and role == "parent":
+            enqueue_onboarding(record["_id"], transaction=transaction)
+
+    atomic(activate)
     return users.find_one({"_id": record["_id"]})
 
 
@@ -272,8 +296,12 @@ def link_existing_user(name, email, role, *, management, subject=None, actor_id=
             if existing.get("username") and existing["username"] != fields.get("username"):
                 raise Problem("The pending portal username does not match this Auth0 account.", 409)
             db().users.update_one({"_id": existing["_id"]}, {"$set": fields}, session=transaction)
-            return existing["_id"]
-        return db().users.insert_one({**fields, "created_at": fields["linked_at"]}, session=transaction).inserted_id
+            account_id = existing["_id"]
+        else:
+            account_id = db().users.insert_one({**fields, "created_at": fields["linked_at"]}, session=transaction).inserted_id
+        if role == "parent":
+            enqueue_onboarding(account_id, existing_account=True, transaction=transaction)
+        return account_id
 
     try:
         account_id = atomic(link)
@@ -287,7 +315,9 @@ def link_existing_user(name, email, role, *, management, subject=None, actor_id=
 def index():
     users = list(db().users.find({}, {"name": 1, "email": 1, "username": 1, "username_sync_pending": 1,
                                     "role": 1, "active": 1}).sort("name", 1))
-    return render_template("accounts.html", users=users, roles=ROLES)
+    deliveries = list(db().onboarding_deliveries.find().sort("created_at", -1).limit(100))
+    names = {user["_id"]: user["name"] for user in users}
+    return render_template("accounts.html", users=users, roles=ROLES, onboarding_deliveries=deliveries, names=names)
 
 
 @bp.post("/admin/accounts")
@@ -301,6 +331,9 @@ def create():
     username = username_field(request.form) if role == "student" else None
     email = email_field(request.form) if role != "student" or request.form.get("email", "").strip() else None
     user = provision(name, email, role, username=username, management=management)
+    if role == "parent":
+        flash("The parent onboarding email is queued. Child sign-in details will be emailed when their accounts are linked.")
+        return redirect(url_for("accounts.index"), code=303)
     return render_template("account_setup.html", account=user, ticket=management.setup_link(user["auth0_sub"])), 201
 
 
@@ -314,7 +347,21 @@ def link_existing():
         name, email, request.form.get("role"), management=Auth0Management(),
         subject=subject or None, actor_id=g.user["_id"],
     )
-    flash(f"Portal access granted to {user['email']}. They can sign in with their existing Auth0 password.")
+    flash(f"Portal access granted to {user['email']}. They can sign in with their existing Auth0 password."
+          + (" The parent onboarding email is queued." if user["role"] == "parent" else ""))
+    return redirect(url_for("accounts.index"), code=303)
+
+
+@bp.post("/admin/onboarding/<delivery_id>/retry")
+@requires("admin")
+def retry_onboarding(delivery_id):
+    result = db().onboarding_deliveries.update_one({"_id": delivery_id, "state": "failed"}, {
+        "$set": {"state": "queued", "attempts": 0, "next_at": now(), "retried_by": g.user["_id"]},
+        "$unset": {"reason": "", "lease": "", "lease_until": ""},
+    })
+    if not result.matched_count:
+        raise Problem("Only stopped onboarding emails can be retried. Reload the account directory.", 409)
+    flash("Onboarding email delivery resumed. Fresh password setup links will be generated when it is sent.")
     return redirect(url_for("accounts.index"), code=303)
 
 
@@ -410,6 +457,8 @@ def change_role(account_id):
         ):
             raise Problem("Accounts with student links or billing records keep their assigned role.", 409)
         database.users.update_one({"_id": account_id}, {"$set": {"role": role}}, session=transaction)
+        if role == "parent":
+            enqueue_onboarding(account_id, existing_account=True, transaction=transaction)
 
     atomic(update)
     flash("Role saved.")
@@ -454,6 +503,7 @@ def link_parent():
             session=transaction,
         )
         if parent_id:
+            enqueue_onboarding(parent_id, student_id=student_id, transaction=transaction)
             database.lessons.update_many(
                 {"student_id": student_id, "billing_parent_id": None, "finalized_at": {"$ne": None}},
                 {"$set": {"billing_parent_id": parent_id}}, session=transaction,

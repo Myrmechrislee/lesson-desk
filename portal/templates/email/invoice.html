@@ -11,14 +11,15 @@
         </td></tr>
         <tr><td style="padding:32px;">
           <p style="margin:0 0 16px;">Hello {{ invoice.recipient.name }},</p>
-          <p style="margin:0 0 24px;">Your invoice from <strong>{{ invoice.supplier.name }}</strong> is ready. You’ll find the PDF attached to this email.</p>
+          <p style="margin:0 0 24px;">Your invoice from <strong>{{ invoice.supplier.name }}</strong> is ready. Use the link below to download the PDF.</p>
           <table role="presentation" style="width:100%;border-collapse:collapse;background-color:#eaf0e7;">
             <tr><td style="padding:18px 20px 4px;color:#586a60;">Invoice</td><td align="right" style="padding:18px 20px 4px;font-weight:bold;">{{ invoice.number }}</td></tr>
             <tr><td style="padding:4px 20px;color:#586a60;">Payment due</td><td align="right" style="padding:4px 20px;">{{ invoice.due_on|day_label }}</td></tr>
             <tr><td style="padding:8px 20px 18px;font-weight:bold;">Total</td><td align="right" style="padding:8px 20px 18px;font-size:24px;font-weight:bold;color:#235745;">{{ invoice.total_cents|money }} <span style="font-size:13px;">{{ invoice.currency }}</span></td></tr>
           </table>
-          <p style="margin:24px 0 16px;">For more information, please visit the website.</p>
-          <p style="margin:0 0 24px;"><a href="{{ website_url }}" style="display:inline-block;padding:12px 22px;border-radius:8px;background-color:#235745;color:#fffefa;text-decoration:none;font-weight:bold;">View your invoices</a></p>
+          <p style="margin:24px 0 12px;"><a href="{{ download_url }}" style="display:inline-block;padding:12px 22px;border-radius:8px;background-color:#235745;color:#fffefa;text-decoration:none;font-weight:bold;">Download invoice PDF</a></p>
+          <p style="margin:0 0 16px;">Sign in with your parent account to download your invoice.</p>
+          <p style="margin:0 0 24px;">For more information, please <a href="{{ website_url }}" style="color:#235745;">view your invoices on the website</a>.</p>
           <p style="margin:0 0 16px;">If you have any questions, please feel free to reach out. Reply to this email and we’ll be happy to help.</p>
           <p style="margin:0;">Thank you,<br><strong>{{ invoice.supplier.name }}</strong></p>
         </td></tr>

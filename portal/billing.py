@@ -433,6 +433,7 @@ def send_invoice(invoice):
     sender = config["MAIL_FROM"].strip()
     sender_address = parseaddr(sender)[1]
     website_url = config["APP_BASE_URL"] + "/invoices"
+    download_url = f"{website_url}/{invoice['_id']}/pdf"
     message = EmailMessage()
     message["From"] = sender
     message["To"] = invoice["recipient"]["email"]
@@ -443,18 +444,18 @@ def send_invoice(invoice):
     message["Subject"] = f"Lesson invoice {invoice['number']}"
     message.set_content(
         f"Hello {invoice['recipient']['name']},\n\n"
-        f"Your lesson invoice {invoice['number']} is attached.\n\n"
+        f"Your lesson invoice {invoice['number']} is ready.\n\n"
         f"Total: {money(invoice['total_cents'])} {invoice['currency']}\n"
         f"Payment due: {day_label(invoice['due_on'])}\n\n"
+        f"Download invoice PDF: {download_url}\n"
+        "Sign in with your parent account to download your invoice.\n\n"
         f"For more information, please visit the website: {website_url}\n"
         "If you have any questions, please feel free to reach out by replying to this email.\n\n"
         f"{invoice['supplier']['name']}\n"
     )
     message.add_alternative(render_template(
-        "email/invoice.html", invoice=invoice, website_url=website_url,
+        "email/invoice.html", invoice=invoice, website_url=website_url, download_url=download_url,
     ), subtype="html")
-    message.add_attachment(invoice["pdf"], maintype="application", subtype="pdf",
-                           filename=invoice["number"] + ".pdf")
 
     context = ssl.create_default_context()
     host, port = config["SMTP_HOST"], config["SMTP_PORT"]
@@ -498,7 +499,7 @@ def deliver_next():
                   "delivery.lease_until": timestamp + timedelta(minutes=5)},
          "$inc": {"delivery.attempts": 1, "delivery.total_attempts": 1}},
         sort=[("delivery.next_at", 1)],
-        projection={"number": 1, "delivery": 1, "pdf": 1, "recipient": 1, "supplier": 1, "issued_at": 1,
+        projection={"number": 1, "delivery": 1, "recipient": 1, "supplier": 1, "issued_at": 1,
                     "total_cents": 1, "currency": 1, "due_on": 1},
         return_document=ReturnDocument.AFTER,
     )

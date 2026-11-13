@@ -61,7 +61,7 @@ def test_edit_preserves_lesson_links_regenerates_pdf_and_keeps_history(app, data
     assert b"Resend PDF" not in parent.get("/invoices").data
 
 
-def test_resend_sends_current_pdf_and_cannot_queue_duplicate(app, database, users, monkeypatch):
+def test_resend_keeps_current_pdf_download_and_cannot_queue_duplicate(app, database, users, monkeypatch):
     invoice = create_invoice(app, database, users)
     tutor = sign_in(app, users["tutor"])
     path = f"/invoices/{invoice['_id']}"
@@ -76,7 +76,9 @@ def test_resend_sends_current_pdf_and_cannot_queue_duplicate(app, database, user
     with app.app_context():
         assert deliver_next()
         assert not deliver_next()
-    assert len(calls) == 1 and calls[0]["pdf"] == saved["pdf"]
+    assert len(calls) == 1 and calls[0]["_id"] == saved["_id"]
+    assert "pdf" not in calls[0]
+    assert sign_in(app, users["parent"]).get(path + "/pdf").data == saved["pdf"]
     assert post(tutor, path + "/resend").status_code == 303
     queued = database.invoices.find_one({"_id": invoice["_id"]})
     assert queued["delivery"]["message_id"] != first_message_id

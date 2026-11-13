@@ -4,7 +4,7 @@ from functools import wraps
 import re
 
 from bson import ObjectId
-from flask import abort, current_app, g, redirect, url_for
+from flask import abort, current_app, g, redirect, request, url_for
 from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 
@@ -48,7 +48,8 @@ def requires(*roles):
         @wraps(view)
         def protected(*args, **kwargs):
             if not g.user:
-                return redirect(url_for("accounts.login"))
+                destination = request.full_path.removesuffix("?") if request.method == "GET" else None
+                return redirect(url_for("accounts.login", next=destination))
             if g.user["role"] not in roles:
                 abort(403)
             return view(*args, **kwargs)
@@ -254,6 +255,7 @@ def ensure_indexes():
     database.announcement_reads.create_index([("parent_id", 1), ("announcement_id", 1)], unique=True)
     database.announcement_views.create_index([("user_id", 1), ("announcement_id", 1)], unique=True)
     database.lesson_reminder_deliveries.create_index([("state", 1), ("next_at", 1)])
+    database.onboarding_deliveries.create_index([("state", 1), ("next_at", 1)])
     database.whiteboard_assets.create_index([("lesson_id", 1), ("created_at", 1)])
     database.whiteboard_live.create_index("expires_at", expireAfterSeconds=0)
     database.whiteboard_live.create_index([("lesson_id", 1), ("seen_at", 1)])

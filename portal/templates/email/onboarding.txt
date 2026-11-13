@@ -1,0 +1,74 @@
+Hello {{ parent.name }},
+
+{% if student_access_only %}A student account has been linked to your family. Their sign-in details are below, along with a guide to lessons.
+{% else %}Welcome to Lesson Desk! Your parent account is ready. You can manage your children's schedules, lessons, progress and invoices in one place.
+{% endif %}
+1. SET UP YOUR PARENT ACCOUNT
+{% if setup_url %}
+Use your private sign-up link to choose a password and finish setting up your account:
+{{ setup_url }}
+This link can be used once and expires in 24 hours.
+{% elif student_access_only %}
+Continue using your parent account. If you have not set your password yet, use the setup link in your welcome email.
+{% else %}
+Your existing Auth0 account now has access to Lesson Desk. Use your existing password; you do not need to sign up again.
+{% endif %}
+Sign in with {{ parent.email }}:
+{{ links.login }}
+If a setup link expires or you need a fresh one, contact your administrator.
+
+2. HELP YOUR CHILDREN SIGN IN
+{% if students %}
+Help each child choose a password using their private setup link.
+{% for student in students %}
+{{ student.name }}
+{{ 'Username' if student.username else 'Sign-in email' }}: {{ student.username or student.email }}
+{% if student.setup_url %}Set up their account: {{ student.setup_url }}{% else %}Ask your administrator for a password setup link.{% endif %}
+{% endfor %}
+Student setup links can be used once and expire in 24 hours. Keep them private. After setup, each child signs in with their own username and password at:
+{{ links.login }}
+Sign out of your parent account first, or use a separate browser profile. Username-only students do not need an email address. Ask your administrator for a fresh setup link if they forget their password.
+{% else %}
+No children are linked yet. Your administrator will link their accounts, and you will receive their usernames and private password setup links in a follow-up email. You can finish setting up your parent account now.
+{% endif %}
+3. SET AVAILABILITY AFTER SIGNING IN
+Open Availability in your parent account:
+{{ links.availability }}
+Choose a child under "Availability for student", add times they can attend and choose "Save weekly hours". Mark preferred times if helpful. Use "Temporary availability" for holidays, extra hours or time away, then "Save temporary hours". Repeat for each child; their calendars are separate. Check the timezone shown on the page.
+
+4. FIND AND OPEN A LESSON
+Open Lessons:
+{{ links.lessons }}
+Choose the child and booked lesson, then "Details" to view the time, tutor, lesson plan and discussion. If no lessons appear, check with your tutor.
+
+5. USE THE SHARED WHITEBOARD
+When the scheduled lesson start time arrives, open the lesson details and choose "Open whiteboard". Parents and students can enter from that time onward. Use "Pen" to draw, "Text" to type and "Select" to move items. Scroll to move around and use the zoom controls or "Fit all" to adjust the view. Changes are shared live with the tutor. Add a PDF or image with "PDF / image", and use "Download PNG" to save a snapshot.
+
+6. JOIN THE LESSON CALL
+In the whiteboard, choose "Join call". Allow your browser to use the camera and microphone, check the preview and microphone level, choose your devices, then "Join lesson call". Use the camera and microphone buttons to switch them on or off, open call settings to change devices, and choose "Leave" when finished. Headphones help prevent echo.
+
+7. RESCHEDULE A LESSON
+From your parent account, open an upcoming lesson and choose "Request change". Select an available time, add an optional reason and choose "Send request". Your tutor must approve the change; the original booking stays in place until approved. Follow the request from Lessons. Requests made less than 24 hours before the lesson require acknowledgement that the original lesson may be charged.
+
+8. CANCEL A LESSON
+Open an upcoming lesson in your parent account and choose "Cancel lesson". You can try rescheduling first. Add an optional reason, confirm your decision and choose "Confirm cancellation". Cancellation takes effect immediately. A late cancellation also requires acknowledgement of the cancellation terms.
+
+CANCELLATION FEE: Cancellations made less than 24 hours before the scheduled start may be charged at the full lesson rate, at the tutor's discretion under your contract. Cancellations made at least 24 hours before the start are free.
+
+9. FOLLOW YOUR CHILDREN'S PROGRESS
+In Lessons, choose "Past lessons & feedback" and open a lesson's feedback to read the tutor's parent update:
+{{ links.lessons }}
+Open Course plans for learning plans and goals:
+{{ links.course_plans }}
+Open Homework for assignments, completion, grades and tutor feedback as they become available:
+{{ links.homework }}
+
+10. ACCESS INVOICES
+Open Invoices in your parent account to check amounts, due dates and payment status:
+{{ links.invoices }}
+Choose "Download" beside an invoice to save its PDF. Invoice emails also include a download link; sign in to your parent account when prompted.
+
+Need help? Reply to this email and we'll help you get started.
+
+See you in Lesson Desk,
+The Lesson Desk team

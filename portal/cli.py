@@ -10,6 +10,7 @@ from .billing import deliver_next, refresh_overdue
 from .core import ROLES, Problem, atomic, boundary, db, email_field, ensure_indexes, lock_accounts, now, today
 from .recurring import maintain_series
 from .lesson_reminders import enqueue_reminders, deliver_next_reminder
+from .onboarding import deliver_next_onboarding
 
 
 def seed_records(tutor, parent, student):
@@ -139,14 +140,16 @@ def register_commands(app):
     @app.cli.command("invoice-worker")
     @click.option("--once", is_flag=True, help="Process the current queue and exit.")
     def invoice_worker(once):
-        """Extend bookings and deliver invoices and lesson reminder emails."""
+        """Extend bookings and deliver onboarding, invoices and lesson reminders."""
         if not app.config["SMTP_HOST"] or not app.config["MAIL_FROM"]:
-            app.logger.warning("Configure SMTP_HOST and MAIL_FROM to deliver invoice email.")
+            app.logger.warning("Configure SMTP_HOST and MAIL_FROM to deliver portal emails.")
         while True:
             try:
                 maintain_series()
                 refresh_overdue()
                 enqueue_reminders()
+                while deliver_next_onboarding():
+                    pass
                 while deliver_next():
                     pass
                 while deliver_next_reminder():

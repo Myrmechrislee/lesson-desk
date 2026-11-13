@@ -208,8 +208,8 @@ def test_auth0_login_checks_pkce_state_nonce_and_subject(app, users, monkeypatch
     monkeypatch.setattr(requests.Session, "request", endpoint)
     client = app.test_client()
 
-    def start_login():
-        response = client.get("/login")
+    def start_login(destination=None):
+        response = client.get("/login", query_string={"next": destination} if destination else {})
         query = parse_qs(urlsplit(response.location).query)
         assert query["code_challenge_method"] == ["S256"]
         assert query["connection"] == [app.config["AUTH0_CONNECTION"]]
@@ -231,11 +231,13 @@ def test_auth0_login_checks_pkce_state_nonce_and_subject(app, users, monkeypatch
     claims.update(nonce=query["nonce"][0], aud="test-client", sub="auth0|unprovisioned", email=users["student"]["email"])
     assert client.get("/auth/callback", query_string={"code": "second", "state": query["state"][0]}).status_code == 403
 
-    query = start_login()
+    destination = "/homework?from=welcome"
+    query = start_login(destination)
     claims.update(nonce=query["nonce"][0], sub=users["student"]["auth0_sub"])
     before_login = client.get_cookie(app.config["SESSION_COOKIE_NAME"]).value
     response = client.get("/auth/callback", query_string={"code": "third", "state": query["state"][0]})
     assert response.status_code == 302
+    assert response.location == destination
     assert client.get_cookie(app.config["SESSION_COOKIE_NAME"]).value != before_login
     page = client.get("/homework")
     assert page.status_code == 200
@@ -508,6 +510,9 @@ def test_outcomes_invoice_delivery_deduplication_and_overdue(app, database, user
     assert post(tutor, outcome, status="completed", parent_feedback="Edited").status_code == 409
 
     pdf_url = f"/invoices/{invoice['_id']}/pdf"
+    login_url = urlsplit(app.test_client().get(pdf_url).location)
+    assert login_url.path == "/login"
+    assert parse_qs(login_url.query)["next"] == [pdf_url]
     assert parent.get(pdf_url).data == invoice["pdf"]
     assert sign_in(app, users["other_parent"]).get(pdf_url).status_code == 404
     assert sign_in(app, users["other_tutor"]).get(pdf_url).status_code == 404
@@ -535,7 +540,10 @@ def test_outcomes_invoice_delivery_deduplication_and_overdue(app, database, user
     assert len(messages) == 1
     message = BytesParser(policy=policy.default).parsebytes(messages[0])
     assert message["To"] == users["parent"]["email"]
-    assert next(message.iter_attachments()).get_payload(decode=True) == invoice["pdf"]
+    assert list(message.iter_attachments()) == []
+    download_url = app.config["APP_BASE_URL"] + pdf_url
+    for format in ("plain", "html"):
+        assert download_url in message.get_body(preferencelist=(format,)).get_content()
     assert database.invoices.find_one({})["delivery"]["state"] == "sent"
 
     database.invoices.update_one({"_id": invoice["_id"]}, {"$set": {"due_at": now() - timedelta(seconds=1)}})

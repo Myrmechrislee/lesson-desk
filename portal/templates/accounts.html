@@ -8,6 +8,7 @@
 <section class="panel form-panel">
   <h2>Create an account</h2>
   <p class="meta">Students sign in with a username and do not need an email address. Adult accounts need an email address.</p>
+  <p class="meta">New parents receive an onboarding email automatically. Linking a child sends their sign-in details to the parent.</p>
   <form class="inline-form account-form" method="post" data-account-form>
     {{ csrf() }}
     <label>Full name<input name="name" maxlength="100" autocomplete="off" required></label>
@@ -78,4 +79,24 @@
     </table>
   </div>
 </section>
+{% if onboarding_deliveries %}
+<section class="panel">
+  <div class="panel-head"><h2>Parent onboarding emails</h2><span class="meta">Latest {{ onboarding_deliveries|length }}</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th scope="col">Parent</th><th scope="col">Email</th><th scope="col">Delivery</th><th scope="col">Action</th></tr></thead>
+      <tbody>
+        {% for delivery in onboarding_deliveries %}
+        <tr>
+          <td>{{ names.get(delivery.parent_id, 'Removed account') }}</td>
+          <td>{% if delivery.student_id %}Child access · {{ names.get(delivery.student_id, 'Removed account') }}{% else %}Welcome guide{% endif %}</td>
+          <td>{{ delivery.state|capitalize }}{% if delivery.reason %}<small>{{ delivery.reason }}</small>{% endif %}</td>
+          <td>{% if delivery.state == 'failed' %}<form method="post" action="{{ url_for('accounts.retry_onboarding', delivery_id=delivery._id) }}">{{ csrf() }}<button class="button secondary compact">Retry email</button></form>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
 {% endblock %}

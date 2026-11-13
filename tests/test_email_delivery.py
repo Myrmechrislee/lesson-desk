@@ -120,7 +120,7 @@ def test_invoice_email_uses_configured_sender_and_themed_html(monkeypatch, secur
         "_id": ObjectId(), "number": "INV-2026-00001", "issued_at": now(),
         "recipient": {"name": "Parent <script>alert(1)</script>", "email": "parent@example.test"},
         "supplier": {"name": "Studio & Tutoring", "email": "tutor@example.test"},
-        "due_on": "2026-12-01", "total_cents": 12550, "currency": "AUD", "pdf": b"%PDF-test",
+        "due_on": "2026-12-01", "total_cents": 12550, "currency": "AUD",
     }
     with application.app_context():
         send_invoice(invoice)
@@ -136,10 +136,12 @@ def test_invoice_email_uses_configured_sender_and_themed_html(monkeypatch, secur
     for body in (plain, html):
         assert "INV-2026-00001" in body and "$125.50" in body and "01 Dec 2026" in body
         assert "https://lessons.example.test/invoices" in body
+        assert f"https://lessons.example.test/invoices/{invoice['_id']}/pdf" in body
+        assert "Sign in with your parent account" in body
+        assert "attached" not in body
         assert "If you have any questions, please feel free to reach out" in body
     assert "#173a2f" in html and "#fffefa" in html
     assert "<script>" not in html and "&lt;script&gt;" in html
     assert "Studio &amp; Tutoring" in html
-    attachment = next(message.iter_attachments())
-    assert attachment.get_filename() == "INV-2026-00001.pdf"
-    assert attachment.get_payload(decode=True) == invoice["pdf"]
+    assert list(message.iter_attachments()) == []
+    assert message.get_content_type() == "multipart/alternative"

@@ -160,6 +160,31 @@ Run `flask --app portal init-db` after upgrading to create the new plan, discuss
 
 [OpenRouter chat API](https://openrouter.ai/docs/api/api-reference/chat/send-chat-completion-request) · [WebRTC connections](https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Connectivity) · [Markdown rendering](https://python-markdown.github.io/reference/) · [HTML sanitization](https://nh3.readthedocs.io/en/stable/)
 
+## Deploy with GitHub Actions
+
+The [deployment workflow](.github/workflows/deploy.yml) runs on pushes to `main`, or manually from **Actions → Deploy to Ubuntu → Run workflow** with `main` selected. Deployments run one at a time.
+
+Add these repository secrets under **Settings → Secrets and variables → Actions** ([GitHub's secrets guide](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)):
+
+| Secret | Value |
+| --- | --- |
+| `SSH_HOST` | Ubuntu server hostname or IP address. |
+| `SSH_USER` | SSH login user, such as `ubuntu`. |
+| `SSH_PRIVATE_KEY` | Complete private key without a passphrase; add its public key to the server user's `~/.ssh/authorized_keys`. |
+| `SSH_PORT` | Optional SSH port; defaults to `22`. |
+
+On the server, clone this repository into `~/lesson-desk`, check out `main` with its upstream configured, and prepare `.env` as described above. Install Git, Docker, and the Docker Compose plugin. The SSH user must be able to run Docker without `sudo` and pull from the repository without prompts, including repository credentials if it is private. Allow SSH connections from the GitHub Actions runner.
+
+The workflow connects over SSH and runs:
+
+```bash
+cd ~/lesson-desk
+git pull --ff-only
+docker compose up -d --build
+```
+
+A failed pull stops deployment before rebuilding. SSH uses [`StrictHostKeyChecking=accept-new`](https://man.openbsd.org/ssh_config.5#StrictHostKeyChecking) to accept the server's host key on the first connection from each fresh runner. No `KNOWN_HOSTS` secret or environment variable is required.
+
 ## Run the integration tests
 
 Use a disposable MongoDB replica set. Each test uses and removes its own randomly named test database. The suite substitutes a test identity provider and sends mail to a local SMTP fixture.

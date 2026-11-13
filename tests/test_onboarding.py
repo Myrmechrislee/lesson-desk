@@ -254,6 +254,7 @@ def test_auth0_identifier_conflicts_release_unused_family_reservations(app, data
 
 
 def test_pending_child_can_be_deleted_and_replaced_during_family_retry(app, database, users, monkeypatch):
+    monkeypatch.setattr(Auth0Management, "delete_subject", lambda self, account: None)
     def create_subject(self, account, password):
         if account["role"] == "student":
             raise ManagementError(503)
@@ -272,11 +273,12 @@ def test_pending_child_can_be_deleted_and_replaced_during_family_retry(app, data
     assert post(admin, "/admin/accounts", **{**details, "child_username": ["new.child"]}).status_code == 303
     parent = database.users.find_one({"email": details["email"]})
     assert database.users.find_one({"username": "new.child"})["parent_id"] == parent["_id"]
-    assert not database.users.find_one({"_id": pending["_id"]})["active"]
+    assert database.users.find_one({"_id": pending["_id"]}) is None
     assert database.onboarding_deliveries.count_documents({}) == 1
 
 
 def test_deleted_child_during_family_setup_prevents_family_activation(app, database, users, monkeypatch):
+    monkeypatch.setattr(Auth0Management, "delete_subject", lambda self, account: None)
     def create_subject(self, account, password):
         if account["role"] == "student":
             database.users.update_one({"_id": account["_id"]}, {"$set": {"deleted_at": now()}})

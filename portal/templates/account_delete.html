@@ -6,9 +6,10 @@
 {{ header('Delete account', account.name ~ ' · ' ~ account.role|capitalize) }}
 <section class="panel form-panel narrow">
   <h2>Delete {{ account.name }}'s account?</h2>
-  <p>Their access to Lesson Desk will end immediately and their account will be removed from the directory. Existing lessons, homework and invoices will be kept as records.</p>
-  {% if account.role == 'parent' %}<p>Their children's accounts will stay available. Link the children to another parent in <strong>Students &amp; topics</strong>. Automatic weekly bookings for those children will stop.</p>{% elif account.role in ('student', 'tutor') %}<p>Their student and tutor links will be removed, and automatic weekly bookings will stop.</p>{% endif %}
-  <p class="meta">Their sign-in identity remains available to other apps. Their email or username stays reserved for their Lesson Desk records.</p>
+  <p>Their access to Lesson Desk will end immediately. Their account and sign-in will be deleted, freeing their email and username for a new account. Existing lessons, homework and invoices will be kept as records.</p>
+  {% if account.role == 'parent' %}<p>Children whose accounts are already active will keep their accounts. Link them to another parent in <strong>Students &amp; topics</strong>. Automatic weekly bookings for those children will stop.</p>{% elif account.role in ('student', 'tutor') %}<p>Their student and tutor links will be removed, and automatic weekly bookings will stop.</p>{% endif %}
+  {% if account.provisioning_children is defined %}<p>The unfinished child accounts in this pending family setup will also be deleted. You can then start family setup again with the same email and usernames.</p>{% endif %}
+  <p class="meta">Deleting their Auth0 sign-in also removes that sign-in from other apps using the same identity. A new account will have separate access and records.</p>
   <form method="post" class="form-actions">
     {{ csrf() }}
     <button class="button danger">Delete account</button>

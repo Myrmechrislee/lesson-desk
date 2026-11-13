@@ -169,11 +169,19 @@ def money(cents):
     return f"${Decimal(cents) / 100:,.2f}"
 
 
-def people(ids):
-    return {
+def people(ids, *, transaction=None):
+    ids = set(ids)
+    users = {
         user["_id"]: user
-        for user in db().users.find({"_id": {"$in": list(set(ids))}}, {"name": 1, "email": 1, "username": 1})
+        for user in db().users.find({"_id": {"$in": list(ids)}}, {"name": 1, "email": 1, "username": 1}, session=transaction)
     }
+    missing = ids - users.keys()
+    if missing:
+        users.update({
+            user["_id"]: user
+            for user in db().account_history.find({"_id": {"$in": list(missing)}}, {"name": 1}, session=transaction)
+        })
+    return users
 
 
 def atomic(callback):

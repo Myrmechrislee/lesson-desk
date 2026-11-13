@@ -90,6 +90,7 @@
             <td>
               {% if user.active %}
                 <form method="post" action="{{ url_for('accounts.setup', account_id=user._id) }}">{{ csrf() }}<button class="button secondary compact no-wrap">Setup link</button></form>
+              {% elif user.deletion_pending %}<span class="pill unpaid">Deletion pending</span>
               {% else %}<span class="pill unpaid">Provisioning pending</span>{% endif %}
             </td>
             <td>{% if user._id != g.user._id %}<a class="button danger compact no-wrap" href="{{ url_for('accounts.delete', account_id=user._id) }}">Delete account</a>{% endif %}</td>

@@ -12,7 +12,7 @@ from PIL import Image
 from pymongo.errors import DuplicateKeyError
 from werkzeug.utils import secure_filename
 
-from .core import Problem, atomic, db, now, object_id, requires, zone
+from .core import Problem, atomic, db, now, object_id, people, requires, zone
 from .calls import ice_servers
 from .lessons import get_lesson
 from .uploads import MAX_PHOTO_BYTES, prepare_photo
@@ -109,7 +109,7 @@ def clean_element(element, element_id, lesson_id):
 @requires("tutor", "parent", "student")
 def board(lesson_id):
     lesson = accessible_lesson(lesson_id)
-    student = db().users.find_one({"_id": lesson["student_id"]}, {"name": 1})
+    student = people([lesson["student_id"]]).get(lesson["student_id"])
     return render_template("whiteboard.html", lesson=lesson,
                            student_name=student["name"] if student else "Student",
                            lesson_date=lesson["start_at"].astimezone(zone()).date().isoformat(),

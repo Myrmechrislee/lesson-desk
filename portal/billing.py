@@ -132,10 +132,7 @@ def generate(tutor_id, parent_id):
         if not lessons:
             raise Problem("There are no finalized, uninvoiced lessons for this parent.", 409)
         student_ids = {lesson["student_id"] for lesson in lessons}
-        names = {
-            user["_id"]: user["name"]
-            for user in database.users.find({"_id": {"$in": list(student_ids)}}, {"name": 1}, session=transaction)
-        }
+        names = people(student_ids, transaction=transaction)
         issued_at = now()
         local_day = issued_at.astimezone(zone()).date()
         due_on = local_day + timedelta(days=supplier["due_days"])
@@ -145,7 +142,7 @@ def generate(tutor_id, parent_id):
         )["value"]
         lines = [{
             "lesson_id": lesson["_id"],
-            "student": names[lesson["student_id"]],
+            "student": names[lesson["student_id"]]["name"],
             **({"topic": lesson["topic"]} if lesson.get("topic") else {}),
             "start_at": lesson["start_at"], "end_at": lesson["end_at"],
             "amount_cents": lesson["rate_cents"] if lesson["charge"] else 0,

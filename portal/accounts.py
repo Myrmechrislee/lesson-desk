@@ -133,6 +133,8 @@ class Auth0Management:
         if not 200 <= response.status_code < 300:
             current_app.logger.warning("Auth0 management request %s returned HTTP %s", path, response.status_code)
             raise ManagementError(response.status_code)
+        if response.status_code == 204:
+            return None
         try:
             return response.json()
         except ValueError:
@@ -207,6 +209,25 @@ class Auth0Management:
             "username": username, "connection": self.connection,
         })
 
+    def delete_subject(self, account):
+        self.authorize()
+        subject = account.get("auth0_sub")
+        if not subject:
+            # A failed provisioning request may have created an identity before
+            # its subject was saved locally. Only remove identities we own.
+            try:
+                subject = self.owned_subject(account)
+            except Problem as error:
+                if error.status == 409:
+                    return
+                raise
+        if subject:
+            try:
+                self.call("DELETE", "/api/v2/users/" + quote(subject, safe=""))
+            except ManagementError as error:
+                if error.provider_status != 404:
+                    raise
+
     def existing_user(self, email, subject=None):
         self.authorize()
         candidates = self.call("GET", "/api/v2/users-by-email", params={"email": email})
@@ -237,7 +258,97 @@ class Auth0Management:
         return ticket
 
 
+def delete_account(account_id, *, management, actor_id=None):
+    """Revoke access, remove Auth0 identities, then release local identifiers."""
+    database = db()
+
+    def begin(transaction):
+        if actor_id is not None:
+            lock_accounts(transaction, {actor_id: "admin"})
+        account = database.users.find_one({"_id": account_id}, session=transaction)
+        if not account:
+            return []
+        records = [account, *database.users.find({
+            "provisioning_parent_id": account_id, "active": False,
+        }, session=transaction)]
+        for record in records:
+            fields = {"active": False, "deletion_pending": True,
+                      "deleted_at": record.get("deleted_at") or now()}
+            if actor_id is not None:
+                fields["deleted_by"] = actor_id
+            database.users.update_one({"_id": record["_id"]}, {"$set": fields}, session=transaction)
+        return records
+
+    records = atomic(begin)
+    if not records:
+        return False
+    try:
+        for record in records:
+            management.delete_subject(record)
+    except Problem:
+        # Keep the identifiers reserved until Auth0 confirms deletion. The
+        # inactive row stays in the directory so an administrator can retry.
+        raise Problem("Account deletion is pending because Auth0 could not remove the sign-in account. Check the Auth0 Management API settings and delete:users permission, then retry Delete account.", 502) from None
+
+    def finish(transaction):
+        if actor_id is not None:
+            lock_accounts(transaction, {actor_id: "admin"})
+        for record in records:
+            account = database.users.find_one({"_id": record["_id"], "deletion_pending": True}, session=transaction)
+            if not account:
+                continue
+            account_id = account["_id"]
+            timestamp = account["deleted_at"]
+            # Keep names for historical records without retaining a login,
+            # contact details, a billing profile, or an account reservation.
+            history = {key: account[key] for key in ("name", "role", "deleted_at", "deleted_by") if key in account}
+            database.account_history.update_one({"_id": account_id}, {"$setOnInsert": history}, upsert=True, session=transaction)
+            if account.get("provisioning_parent_id"):
+                database.users.update_one({"_id": account["provisioning_parent_id"], "active": False}, {
+                    "$pull": {"provisioning_children": account["username"]},
+                }, session=transaction)
+            child_ids = database.users.distinct("_id", {"parent_id": account_id}, session=transaction)
+            database.users.update_many({"parent_id": account_id}, {
+                "$unset": {"parent_id": "", "availability_parent_id": ""},
+            }, session=transaction)
+            database.enrollments.delete_many({"$or": [{"student_id": account_id}, {"tutor_id": account_id}]}, session=transaction)
+            database.lesson_series.update_many({"active": True, "$or": [
+                {"student_id": {"$in": [account_id, *child_ids]}}, {"tutor_id": account_id},
+            ]}, {"$set": {"active": False, "stopped_at": timestamp, "stopped_by": actor_id}}, session=transaction)
+            database.change_requests.update_many({"status": "pending", "$or": [
+                {"student_id": account_id}, {"tutor_id": account_id}, {"parent_id": account_id},
+            ]}, {"$set": {"status": "withdrawn", "resolved_at": timestamp}}, session=transaction)
+            for collection in (database.weekly_availability, database.availability_exceptions):
+                collection.delete_many({"$or": [
+                    {"student_id": account_id}, {"tutor_id": account_id}, {"parent_id": account_id},
+                ]}, session=transaction)
+            for collection, query in (
+                (database.onboarding_deliveries, {"$or": [{"parent_id": account_id}, {"student_id": account_id}]}),
+                (database.lesson_reminder_deliveries, {"user_id": account_id}),
+            ):
+                collection.update_many({**query, "state": {"$in": ["queued", "sending", "failed"]}}, {
+                    "$set": {"state": "skipped", "reason": "Account deleted."},
+                    "$unset": {"lease": "", "lease_until": "", "next_at": ""},
+                }, session=transaction)
+            database.users.delete_one({"_id": account_id}, session=transaction)
+
+    atomic(finish)
+    return True
+
+
+def remove_deleted_reservations(*, management, email=None, usernames=(), subject=None, actor_id=None):
+    """Finish deletions from older versions when their identifiers are reused."""
+    identifiers = ([{"email": email}] if email else []) + [{"username": username} for username in usernames]
+    if subject:
+        identifiers.append({"auth0_sub": subject})
+    if identifiers:
+        for account in db().users.find({"deleted_at": {"$exists": True}, "$or": identifiers}, {"_id": 1}):
+            delete_account(account["_id"], management=management, actor_id=actor_id)
+
+
 def provision(name, email, role, *, management, username=None, password=None, reuse=False, actor_id=None):
+    remove_deleted_reservations(management=management, email=email,
+                                usernames=[username] if username else [], actor_id=actor_id)
     users = db().users
     record = {
         "_id": ObjectId(), "name": name, "role": role,
@@ -251,9 +362,7 @@ def provision(name, email, role, *, management, username=None, password=None, re
         users.insert_one(record)
     except DuplicateKeyError:
         record = users.find_one({"username": username} if username else {"email": email})
-        if record and record.get("deleted_at"):
-            raise Problem("This account has been deleted from Lesson Desk. Its sign-in identifier remains reserved for its records.", 409) from None
-        if not record or record["role"] != role or (email and record.get("email") != email) or (record["name"] != name and not record["active"]):
+        if not record or record.get("deleted_at") or record["role"] != role or (email and record.get("email") != email) or (record["name"] != name and not record["active"]):
             raise Problem("This email or username already has an account with different details.", 409) from None
         if "provisioning_children" in record or record.get("provisioning_parent_id"):
             raise Problem("Retry this pending family account with the same parent and child details.", 409) from None
@@ -277,7 +386,12 @@ def provision(name, email, role, *, management, username=None, password=None, re
         if result.matched_count and role == "parent":
             enqueue_onboarding(record["_id"], transaction=transaction)
 
-    atomic(activate)
+    try:
+        atomic(activate)
+    except Problem:
+        if not users.find_one({"_id": record["_id"], "deleted_at": {"$exists": False}}, {"_id": 1}):
+            management.delete_subject({**record, "auth0_sub": subject})
+        raise
     return users.find_one({"_id": record["_id"]})
 
 
@@ -302,6 +416,7 @@ def provision_family(name, email, children, *, management, actor_id):
     """Keep a family pending until every identity is ready, then queue one welcome."""
     users = db().users
     usernames = sorted(child["username"] for child in children)
+    remove_deleted_reservations(management=management, email=email, usernames=usernames, actor_id=actor_id)
 
     def reserve(transaction):
         lock_accounts(transaction, {actor_id: "admin"})
@@ -337,10 +452,18 @@ def provision_family(name, email, children, *, management, actor_id):
         raise Problem("An email or username was just reserved by another account. Reload and retry family setup.", 409) from None
     # Auth0's account marker makes these calls safe to retry after partial failure.
     subjects = {}
+
+    def cleanup_deleted_subjects():
+        for candidate in records:
+            subject = subjects.get(candidate["_id"])
+            if subject and not users.find_one({"_id": candidate["_id"], "deleted_at": {"$exists": False}}, {"_id": 1}):
+                management.delete_subject({**candidate, "auth0_sub": subject})
+
     for record in records:
         try:
             subjects[record["_id"]] = management.create_subject(record, f"Aa7!{secrets.token_urlsafe(36)}")
         except Problem as error:
+            cleanup_deleted_subjects()
             if error.status == 409:
                 # A confirmed foreign identity cannot be fixed by retrying its
                 # identifier. Release only our unused local reservations.
@@ -381,7 +504,11 @@ def provision_family(name, email, children, *, management, actor_id):
                 raise Problem("A family account changed during setup. Reload the account directory.", 409)
         enqueue_onboarding(parent_id, transaction=transaction)
 
-    atomic(activate)
+    try:
+        atomic(activate)
+    except Problem:
+        cleanup_deleted_subjects()
+        raise
     return users.find_one({"_id": records[0]["_id"]})
 
 
@@ -389,6 +516,7 @@ def link_existing_user(name, email, role, *, management, subject=None, actor_id=
     """Grant a local role to an explicitly selected existing identity without changing Auth0."""
     if role not in ROLES:
         raise Problem("Choose an account role.")
+    remove_deleted_reservations(management=management, email=email, subject=subject, actor_id=actor_id)
     identity = management.existing_user(email, subject)
     fields = {
         "name": name, "email": email, "role": role, "active": True,
@@ -405,7 +533,7 @@ def link_existing_user(name, email, role, *, management, subject=None, actor_id=
         ]}, session=transaction)
         if existing:
             if existing.get("deleted_at"):
-                raise Problem("This account has been deleted from Lesson Desk. Its sign-in identifier remains reserved for its records.", 409)
+                raise Problem("This account is being deleted. Retry after deletion finishes.", 409)
             if "provisioning_children" in existing or existing.get("provisioning_parent_id"):
                 raise Problem("Retry this pending family account with the same parent and child details.", 409)
             if existing.get("active") or existing.get("auth0_sub"):
@@ -430,8 +558,9 @@ def link_existing_user(name, email, role, *, management, subject=None, actor_id=
 @bp.get("/admin/accounts")
 @requires("admin")
 def index():
-    users = list(db().users.find({"deleted_at": {"$exists": False}}, {"name": 1, "email": 1, "username": 1, "username_sync_pending": 1,
-                                    "role": 1, "active": 1}).sort("name", 1))
+    users = list(db().users.find({"$or": [{"deleted_at": {"$exists": False}}, {"deletion_pending": True}]},
+                                {"name": 1, "email": 1, "username": 1, "username_sync_pending": 1,
+                                 "role": 1, "active": 1, "deletion_pending": 1}).sort("name", 1))
     deliveries = list(db().onboarding_deliveries.find().sort("created_at", -1).limit(100))
     names = {user["_id"]: user["name"] for user in users}
     return render_template("accounts.html", users=users, roles=ROLES, onboarding_deliveries=deliveries, names=names)
@@ -471,51 +600,14 @@ def delete(account_id):
     if account_id == g.user["_id"]:
         raise Problem("Another administrator must delete your account.", 409)
     if request.method == "GET":
-        account = db().users.find_one({"_id": account_id, "deleted_at": {"$exists": False}})
+        account = db().users.find_one({"_id": account_id})
         if not account:
             abort(404)
         return render_template("account_delete.html", account=account)
 
-    def remove(transaction):
-        database = db()
-        lock_accounts(transaction, {g.user["_id"]: "admin"})
-        account = database.users.find_one({"_id": account_id, "deleted_at": {"$exists": False}}, session=transaction)
-        if not account:
-            abort(404)
-        timestamp = now()
-        # Keep referenced records and identities for lesson and invoice history.
-        database.users.update_one({"_id": account_id}, {
-            "$set": {"active": False, "deleted_at": timestamp, "deleted_by": g.user["_id"]},
-            "$unset": {"parent_id": "", "calendar_version": "", "username_sync_pending": ""},
-        }, session=transaction)
-        if account.get("provisioning_parent_id"):
-            database.users.update_one({"_id": account["provisioning_parent_id"], "active": False}, {
-                "$pull": {"provisioning_children": account["username"]},
-            }, session=transaction)
-        child_ids = database.users.distinct("_id", {"parent_id": account_id}, session=transaction)
-        database.users.update_many({"parent_id": account_id}, {"$unset": {"parent_id": ""}}, session=transaction)
-        database.enrollments.delete_many({"$or": [{"student_id": account_id}, {"tutor_id": account_id}]}, session=transaction)
-        database.lesson_series.update_many({"active": True, "$or": [
-            {"student_id": {"$in": [account_id, *child_ids]}}, {"tutor_id": account_id},
-        ]}, {"$set": {"active": False, "stopped_at": timestamp, "stopped_by": g.user["_id"]}}, session=transaction)
-        database.change_requests.update_many({"status": "pending", "$or": [
-            {"student_id": account_id}, {"tutor_id": account_id}, {"parent_id": account_id},
-        ]}, {"$set": {"status": "withdrawn", "resolved_at": timestamp}}, session=transaction)
-        for collection in (database.weekly_availability, database.availability_exceptions):
-            collection.delete_many({"$or": [
-                {"student_id": account_id}, {"tutor_id": account_id}, {"parent_id": account_id},
-            ]}, session=transaction)
-        for collection, query in (
-            (database.onboarding_deliveries, {"$or": [{"parent_id": account_id}, {"student_id": account_id}]}),
-            (database.lesson_reminder_deliveries, {"user_id": account_id}),
-        ):
-            collection.update_many({**query, "state": {"$in": ["queued", "sending", "failed"]}}, {
-                "$set": {"state": "skipped", "reason": "Account deleted."},
-                "$unset": {"lease": "", "lease_until": "", "next_at": ""},
-            }, session=transaction)
-
-    atomic(remove)
-    flash("Account deleted. Portal access has ended; lesson, homework and invoice history is preserved.")
+    if not delete_account(account_id, management=Auth0Management(), actor_id=g.user["_id"]):
+        abort(404)
+    flash("Account and sign-in deleted. The email and username can be used again. Lesson, homework and invoice history is preserved.")
     return redirect(url_for("accounts.index"), code=303)
 
 

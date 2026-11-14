@@ -698,6 +698,26 @@ def set_username(account_id):
     return redirect(url_for("accounts.index"), code=303)
 
 
+@bp.post("/admin/accounts/<account_id>/name")
+@requires("admin")
+def change_name(account_id):
+    account_id = object_id(account_id)
+    name = text_field(request.form, "name", "a name", limit=100, required=True)
+
+    def update(transaction):
+        database = db()
+        lock_accounts(transaction, {g.user["_id"]: "admin"})
+        result = database.users.update_one(
+            {"_id": account_id, "active": True}, {"$set": {"name": name}}, session=transaction,
+        )
+        if not result.matched_count:
+            abort(404)
+
+    atomic(update)
+    flash("Account name saved.")
+    return redirect(url_for("accounts.index"), code=303)
+
+
 @bp.post("/admin/accounts/<account_id>/role")
 @requires("admin")
 def change_role(account_id):

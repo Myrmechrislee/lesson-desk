@@ -82,6 +82,8 @@ In **Accounts → Directory**, choose **Delete account** and confirm to delete t
 
 Grant the Management API client [`delete:users`](https://auth0.com/docs/api/management/v2/users/delete-users-by-id) before using account deletion. If Auth0 fails, access ends immediately and the directory shows **Deletion pending**; retry **Delete account** after fixing the provider settings. Identifiers stay reserved until the sign-in has been removed. Accounts deleted by older versions are cleaned up automatically when their email or username is entered for a new account, including family creation, so earlier deletions no longer block reuse.
 
+In **Accounts → Directory**, edit a name and choose **Save name** to update the name shown in Lesson Desk. Administrators can edit any active account's name, including their own.
+
 ### Give an existing Auth0 user access
 
 Users in the same Auth0 tenant and database connection can use their existing credentials across applications. Enable that connection for the Lesson Desk **Regular Web Application** under **Applications → Applications → Lesson Desk → Connections** (or the connection's **Applications** tab). `AUTH0_CONNECTION` must name that database connection, and `AUTH0_DOMAIN` must refer to the same tenant. See [Auth0's connection configuration guidance](https://support.auth0.com/center/s/article/Enabling-Multiple-Database-Connections-for-a-Single-Application).

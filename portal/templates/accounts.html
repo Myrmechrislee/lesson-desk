@@ -60,7 +60,16 @@
       <tbody>
         {% for user in users %}
           <tr>
-            <td><strong>{{ user.name }}</strong>{% if user._id == g.user._id %}<small>Your account</small>{% endif %}</td>
+            <td>
+              {% if user.active %}
+                <form class="table-form" method="post" action="{{ url_for('accounts.change_name', account_id=user._id) }}">
+                  {{ csrf() }}
+                  <input name="name" value="{{ user.name }}" maxlength="100" aria-label="Name for {{ user.name }}" autocomplete="off" required>
+                  <button class="button secondary compact no-wrap">Save name</button>
+                </form>
+              {% else %}<strong>{{ user.name }}</strong>{% endif %}
+              {% if user._id == g.user._id %}<small>Your account</small>{% endif %}
+            </td>
             <td>
               {% if user.role == 'student' and user.active %}
                 {% if user.username and not user.username_sync_pending %}

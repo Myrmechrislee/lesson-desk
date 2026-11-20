@@ -106,9 +106,9 @@ def test_calendar_retains_exact_times_and_splits_multiday_exceptions(app):
         view = availability_calendar(first, [block], [exception])
     assert view["weekly_entries"][0]["start"] == "09:15"
     assert view["weekly_entries"][0]["end"] == "00:00"
-    assert view["weekly_calendar_rows"][18]["cells"][0]["entries"][0]["label"] == "09:15–24:00"
-    assert view["temporary_calendar_rows"][46]["cells"][0]["entries"][0]["segment_label"] == "23:15–24:00"
-    assert view["temporary_calendar_rows"][0]["cells"][1]["entries"][0]["segment_label"] == "00:00–00:45"
+    assert view["weekly_calendar_rows"][18]["cells"][0]["entries"][0]["label"] == "9:15 AM–12:00 AM"
+    assert view["temporary_calendar_rows"][46]["cells"][0]["entries"][0]["segment_label"] == "11:15 PM–12:00 AM"
+    assert view["temporary_calendar_rows"][0]["cells"][1]["entries"][0]["segment_label"] == "12:00 AM–12:45 AM"
     assert view["temporary_calendar_rows"][1]["cells"][1]["state"] == "unavailable"
     assert view["temporary_calendar_rows"][2]["cells"][1]["state"] == ""
 
@@ -175,7 +175,7 @@ def test_parent_saves_independent_student_calendars_and_booking_rechecks_selecti
     assert database.weekly_availability.find_one({"_id": inherited["_id"]})["start_min"] == 0
     assert database.weekly_availability.count_documents({"parent_id": users["parent"]["_id"], "student_id": users["student"]["_id"]}) == 7
     assert database.weekly_availability.count_documents({"parent_id": users["parent"]["_id"], "student_id": users["sibling"]["_id"]}) == 7
-    for child, label in (("student", "09:00–11:00"), ("sibling", "13:00–15:00")):
+    for child, label in (("student", "9:00 AM–11:00 AM"), ("sibling", "1:00 PM–3:00 PM")):
         snapshot = tutor.get("/lessons/booking-availability", query_string={
             "student_id": str(users[child]["_id"]), "day": str(day), "minutes": "60", "repeat": "once",
         }).get_json()

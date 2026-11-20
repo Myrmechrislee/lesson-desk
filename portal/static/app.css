@@ -19,6 +19,10 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+.time-picker { display: flex; align-items: center; gap: .35rem; flex-wrap: wrap; margin-top: .4rem; }
+.time-picker input, .time-picker select { width: auto; flex: 1 1 4rem; margin: 0; padding-inline: .55rem; }
+.time-picker input[type="date"] { flex-basis: 100%; }
+.time-picker-error { color: #9b352b; }
 .setup-banner { padding: 1rem 1.2rem; margin-bottom: 1.25rem; border: 1px solid #e4c68b; border-radius: 12px; background: var(--amber-bg); color: var(--amber); }
 .setup-banner ul { margin: .5rem 0 0; padding-left: 1.2rem; }
 .setup-banner li { margin: .4rem 0; line-height: 1.5; }
@@ -478,7 +482,7 @@ td small { margin-top: .12rem; }
 .compact-calendar { min-width: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; scroll-margin-top: 1rem; }
 .compact-calendar .availability-calendar { width: 100%; min-width: 0; }
 .compact-calendar .availability-calendar thead th { position: static; height: 38px; padding: .3rem .1rem; font-size: .74rem; }
-.compact-calendar .availability-calendar th:first-child { width: 43px; }
+.compact-calendar .availability-calendar th:first-child { width: 62px; white-space: nowrap; }
 .compact-calendar .availability-calendar tbody th { position: static; padding-top: .1rem; vertical-align: top; font-size: .66rem; }
 .compact-calendar .availability-calendar thead small { font-size: .65rem; white-space: nowrap; }
 .compact-calendar .calendar-cell { height: 6px; line-height: 0; border-bottom-color: #dce3d955; }
@@ -490,6 +494,7 @@ td small { margin-top: .12rem; }
 .availability-layout .calendar-editor-fields { grid-template-columns: minmax(0, 1fr); gap: .55rem; }
 .availability-layout .calendar-editor label { font-size: .82rem; }
 .availability-layout .calendar-editor input, .availability-layout .calendar-editor select { min-height: 34px; padding: .35rem .5rem; }
+.availability-layout .calendar-editor input[type="checkbox"] { min-height: 0; }
 .availability-layout .calendar-editor .form-actions { margin-top: 0; }
 .availability-layout .calendar-editor select { width: 100%; text-overflow: ellipsis; }
 .announcement-head { padding: 0 0 1rem; align-items: flex-start; }

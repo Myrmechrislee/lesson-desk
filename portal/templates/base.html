@@ -8,18 +8,19 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='comments.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='planning.css') }}">
+  <script defer src="{{ url_for('static', filename='time-preferences.js') }}"></script>
   <script defer src="{{ url_for('static', filename='app.js') }}"></script>
   <script defer src="{{ url_for('static', filename='markdown.js') }}"></script>
   <script defer src="{{ url_for('static', filename='planning.js') }}"></script>
   {% block extra_head %}{% endblock %}
 </head>
-<body class="{{ 'signed-in' if g.user else 'signed-out' }}">
+<body class="{{ 'signed-in' if g.user else 'signed-out' }}" data-time-format="{{ time_format }}"{% if g.user and not g.user.get('preferences', {}).get('timezone') %} data-detect-timezone-url="{{ url_for('settings.detect_timezone') }}"{% endif %}>
 <a class="skip-link" href="#main">Skip to content</a>
 {% if g.user %}
   {% set role = g.user.role %}
   {% set endpoint = request.endpoint or '' %}
   {% set nav = {
-    'admin': [('accounts.index', 'Accounts', 'accounts'), ('accounts.students', 'Students & topics', 'links'), ('announcements.index', 'Announcements', 'announcements'), ('billing.index', 'Email delivery', 'invoices')],
+    'admin': [('accounts.index', 'Accounts', 'accounts'), ('accounts.students', 'Students & topics', 'links'), ('lessons.index', 'Lessons', 'lessons'), ('lessons.availability', 'Availability', 'availability'), ('announcements.index', 'Announcements', 'announcements'), ('billing.index', 'Email delivery', 'invoices')],
     'tutor': [('lessons.index', 'Lessons', 'lessons'), ('lessons.availability', 'Availability', 'availability'), ('homework.index', 'Homework', 'homework'), ('announcements.index', 'Announcements', 'announcements'), ('billing.index', 'Invoices', 'invoices'), ('billing.profile', 'Billing profile', 'profile')],
     'parent': [('lessons.index', 'Lessons & feedback', 'lessons'), ('lessons.availability', 'Availability', 'availability'), ('homework.index', 'Homework', 'homework'), ('announcements.index', 'Announcements', 'announcements'), ('billing.index', 'Invoices', 'invoices')],
     'student': [('homework.index', 'Homework', 'homework'), ('lessons.index', 'Lessons & feedback', 'lessons'), ('announcements.index', 'Announcements', 'announcements')]
@@ -41,6 +42,7 @@
       {% endfor %}
       {% if role in ['tutor', 'parent', 'student'] %}<a href="{{ url_for('calendar.index') }}" {% if request.blueprint == 'calendar' %}aria-current="page"{% endif %}><span class="nav-icon icon-lessons" aria-hidden="true"></span>Calendar subscription</a>{% endif %}
       {% if role in ['tutor', 'parent', 'student'] %}<a href="{{ url_for('planning.index') }}" {% if request.blueprint == 'planning' %}aria-current="page"{% endif %}>Course plans</a>{% endif %}
+      <a href="{{ url_for('settings.index') }}" {% if request.blueprint == 'settings' %}aria-current="page"{% endif %}>Settings</a>
     </nav>
     <div class="account">
       <div class="account-line">

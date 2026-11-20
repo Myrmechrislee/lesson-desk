@@ -118,6 +118,7 @@ if (outcomeStatus) {
 
 const bookingForm = document.querySelector("[data-booking-form]");
 if (bookingForm) {
+  const tutor = bookingForm.querySelector("[data-booking-tutor]");
   const student = bookingForm.querySelector("[data-booking-student]");
   const topic = bookingForm.querySelector("[data-booking-topic]");
   const title = bookingForm.querySelector("[data-booking-title]");
@@ -143,7 +144,7 @@ if (bookingForm) {
   const filterTopics = () => {
     for (const option of topic.options) {
       if (!option.value) continue;
-      option.hidden = option.dataset.studentId !== student.value;
+      option.hidden = option.dataset.studentId !== student.value || Boolean(tutor && option.dataset.tutorId !== tutor.value);
       option.disabled = option.hidden;
     }
     const choices = Array.from(topic.options).filter((option) => option.value && !option.disabled);
@@ -163,12 +164,13 @@ if (bookingForm) {
     submit.disabled = true;
     slots.replaceChildren(new Option("Choose an available time", ""));
     start.setCustomValidity("");
-    if (!student.value || !day.value || !duration.validity.valid) {
-      validation.textContent = "Choose a student, date and duration to check availability.";
+    if (!student.value || (tutor && !tutor.value) || !day.value || !duration.validity.valid) {
+      validation.textContent = "Choose a tutor, student, date and duration to check the booking.";
       return;
     }
     const params = new URLSearchParams({ student_id: student.value, day: day.value,
       minutes: duration.value, repeat: repeat.value, weeks: weeks.value });
+    if (tutor) params.set("tutor_id", tutor.value);
     if (start.value) params.set("starts_at", start.value);
     validation.textContent = "Checking student and tutor availability…";
     start.setCustomValidity("Wait for availability to be checked.");
@@ -198,7 +200,14 @@ if (bookingForm) {
     start.setCustomValidity("Wait for availability to be checked.");
     timer = setTimeout(check, 150);
   };
-  student.addEventListener("change", () => { start.value = ""; filterTopics(); scheduleCheck(); });
+  const resetBooking = () => {
+    start.value = "";
+    start.dispatchEvent(new Event("change", { bubbles: true }));
+    filterTopics();
+    scheduleCheck();
+  };
+  student.addEventListener("change", resetBooking);
+  tutor?.addEventListener("change", resetBooking);
   topic.addEventListener("change", selectTopic);
   repeat.addEventListener("change", () => {
     weeksGroup.hidden = repeat.value !== "count";
@@ -213,10 +222,12 @@ if (bookingForm) {
   });
   day.addEventListener("change", () => {
     start.value = "";
+    start.dispatchEvent(new Event("change", { bubbles: true }));
     scheduleCheck();
   });
   slots.addEventListener("change", () => {
     start.value = slots.value;
+    start.dispatchEvent(new Event("change", { bubbles: true }));
     scheduleCheck();
   });
   filterTopics();
@@ -304,7 +315,10 @@ for (const editor of document.querySelectorAll("[data-calendar-editor]")) {
   if (temporaryStart) {
     temporaryStart.addEventListener("input", () => {
       const startTime = wallTime(temporaryStart.value);
-      if (Number.isFinite(startTime)) temporaryEnd.value = new Date(startTime + temporaryDuration).toISOString().slice(0, 16);
+      if (Number.isFinite(startTime)) {
+        temporaryEnd.value = new Date(startTime + temporaryDuration).toISOString().slice(0, 16);
+        temporaryEnd.dispatchEvent(new Event("change", { bubbles: true }));
+      }
     });
     temporaryEnd.addEventListener("input", rememberDuration);
     rememberDuration();
@@ -317,10 +331,15 @@ for (const editor of document.querySelectorAll("[data-calendar-editor]")) {
   };
   const populate = (source) => {
     const fields = kind === "weekly"
-      ? [["weekday", "weekday"], ["start", "start"], ["end", "end"], ["kind", "kind"]]
+      ? [["weekday", "weekday"], ["start", "start"], ["end", "end"], ["end_next_day", "endNextDay"], ["kind", "kind"]]
       : [["starts_at", "startsAt"], ["ends_at", "endsAt"], ["kind", "kind"]];
     for (const [name, key] of fields) {
-      if (source.dataset[key] !== undefined) editor.elements.namedItem(name).value = source.dataset[key];
+      if (source.dataset[key] !== undefined) {
+        const field = editor.elements.namedItem(name);
+        if (field.type === "checkbox") field.checked = source.dataset[key] === "yes";
+        else field.value = source.dataset[key];
+        field.dispatchEvent(new Event("change", { bubbles: true }));
+      }
     }
     selection.textContent = entrySelect.value ? "Editing the selected interval." : "New interval selected. Adjust the times and save.";
     rememberDuration();
@@ -339,7 +358,8 @@ for (const editor of document.querySelectorAll("[data-calendar-editor]")) {
       populate(entrySelect.value ? entrySelect.selectedOptions[0] : cell);
       for (const selected of document.querySelectorAll(`[data-calendar-select="${kind}"][aria-pressed="true"]`)) selected.setAttribute("aria-pressed", "false");
       cell.setAttribute("aria-pressed", "true");
-      editor.elements.namedItem(kind === "weekly" ? "start" : "starts_at").focus({ preventScroll: true });
+      const field = editor.elements.namedItem(kind === "weekly" ? "start" : "starts_at");
+      (field.hidden ? field.nextElementSibling.querySelector("input, select") : field).focus({ preventScroll: true });
     });
     cell.addEventListener("keydown", (event) => {
       const steps = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
@@ -359,7 +379,7 @@ for (const editor of document.querySelectorAll("[data-calendar-editor]")) {
   updateRemove();
 }
 
-for (const selection of document.querySelectorAll("[data-availability-student]")) {
+for (const selection of document.querySelectorAll("[data-availability-student], [data-availability-account]")) {
   selection.addEventListener("change", () => selection.form.requestSubmit());
 }
 
@@ -374,7 +394,7 @@ const slotSelection = document.querySelector("[data-slot-selection]");
 if (slotSelection) {
   for (const choice of document.querySelectorAll('.calendar-slot input[type="radio"]')) {
     choice.addEventListener("change", () => {
-      slotSelection.textContent = `Requested time: ${choice.value.replace("T", " at ")}.`;
+      slotSelection.textContent = `Requested time: ${choice.closest("label").textContent.trim()}.`;
     });
   }
 }

@@ -2,9 +2,10 @@ from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from functools import wraps
 import re
+from zoneinfo import ZoneInfo
 
 from bson import ObjectId
-from flask import abort, current_app, g, redirect, request, url_for
+from flask import abort, current_app, g, has_request_context, redirect, request, url_for
 from pymongo.read_concern import ReadConcern
 from pymongo.write_concern import WriteConcern
 
@@ -31,8 +32,20 @@ def db():
     return current_app.extensions["db"]
 
 
-def zone():
-    return current_app.extensions["zone"]
+def preferences(user=None):
+    if user is None and has_request_context():
+        user = getattr(g, "user", None)
+    return (user or {}).get("preferences", {})
+
+
+def zone(user=None):
+    name = preferences(user).get("timezone")
+    return ZoneInfo(name) if name else current_app.extensions["zone"]
+
+
+def schedule_zone(record):
+    # Legacy schedules belong to APP_TIMEZONE, regardless of who views them.
+    return ZoneInfo(record.get("timezone") or current_app.config["APP_TIMEZONE"])
 
 
 def now():
@@ -125,12 +138,12 @@ def time_minutes(value, *, end=False):
     return clock.hour * 60 + clock.minute
 
 
-def boundary(day, minute=0):
+def boundary(day, minute=0, *, tz=None):
     wall_time = datetime.combine(day, time.min) + timedelta(minutes=minute)
-    return wall_time.replace(tzinfo=zone()).astimezone(UTC)
+    return wall_time.replace(tzinfo=tz or zone()).astimezone(UTC)
 
 
-def local_datetime(value):
+def local_datetime(value, *, tz=None):
     if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}", value):
         raise Problem("Choose a date and time.")
     date_field(value[:10])
@@ -138,23 +151,33 @@ def local_datetime(value):
         wall = datetime.fromisoformat(value)
     except ValueError:
         raise Problem("Choose a valid date and time.") from None
-    local = wall.replace(tzinfo=zone())
+    tz = tz or zone()
+    local = wall.replace(tzinfo=tz)
     instant = local.astimezone(UTC)
-    if instant.astimezone(zone()).replace(tzinfo=None) != wall:
+    if instant.astimezone(tz).replace(tzinfo=None) != wall:
         raise Problem("Choose a time that exists after the daylight saving change.")
     if local.utcoffset() != local.replace(fold=1).utcoffset():
         raise Problem("Choose a time outside the repeated daylight saving hour.")
     return instant
 
 
-def stamp(value, style="full"):
+def clock_label(minute, *, user=None):
+    if preferences(user).get("time_format", "12") == "24":
+        return f"{minute // 60:02d}:{minute % 60:02d}"
+    hour = minute // 60 % 24
+    return f"{hour % 12 or 12}:{minute % 60:02d} {'AM' if hour < 12 else 'PM'}"
+
+
+def stamp(value, style="full", *, user=None):
     if not value:
         return ""
-    local = value.astimezone(zone())
+    local = value.astimezone(zone(user))
+    clock = clock_label(local.hour * 60 + local.minute, user=user)
     formats = {
-        "full": "%a, %d %b %Y · %H:%M",
+        "full": "%a, %d %b %Y · " + clock,
         "day": "%a, %d %b",
-        "time": "%H:%M",
+        "time": clock,
+        "clock": "%H:%M",
         "date": "%d %b %Y",
         "input": "%Y-%m-%dT%H:%M",
     }
@@ -203,8 +226,29 @@ def lock_accounts(session, expected_roles):
             raise Problem("An account linked to this operation has changed. Reload the page.", 409)
 
 
+def migrate_schedule_timezones():
+    """Pin pre-preference schedules to their original site timezone."""
+    database = db()
+    missing_times = {"$or": [{"start_at": {"$exists": False}}, {"end_at": {"$exists": False}}]}
+    for block in database.weekly_availability.find(missing_times):
+        tz = schedule_zone(block)
+        # A reference Monday supplies UTC storage for the rule; its saved zone
+        # supplies the wall time when expanding dates with another UTC offset.
+        day = date(2000, 1, 3) + timedelta(days=block["weekday"])
+        database.weekly_availability.update_one({"_id": block["_id"], **missing_times}, {"$set": {
+            "start_at": boundary(day, block["start_min"], tz=tz),
+            "end_at": boundary(day, block["end_min"], tz=tz), "timezone": tz.key,
+        }})
+    for series in database.lesson_series.find({"timezone": {"$exists": False}}):
+        tz = schedule_zone(series)
+        database.lesson_series.update_one({"_id": series["_id"], "timezone": {"$exists": False}}, {"$set": {
+            "timezone": tz.key, "start_at": local_datetime(f"{series['first_on']}T{series['time']}", tz=tz),
+        }})
+
+
 def ensure_indexes():
     database = db()
+    migrate_schedule_timezones()
     database.sessions.create_index("id", unique=True)
     # Username-only students have no email. Replace the original index, which
     # treats a missing email as a unique null, without dropping email uniqueness.

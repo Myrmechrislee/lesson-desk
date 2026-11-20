@@ -4,7 +4,7 @@
 {% block content %}
 {% set role = g.user.role %}
 {% call header('Lessons & feedback' if role == 'parent' else 'Lessons', zone_name) %}
-  {% if role == 'tutor' %}<a class="button primary" href="{{ url_for('lessons.new') }}">Schedule lesson <span aria-hidden="true">+</span></a>{% endif %}
+  {% if role in ['admin', 'tutor'] %}<a class="button primary" href="{{ url_for('lessons.new') }}">Schedule lesson <span aria-hidden="true">+</span></a>{% endif %}
 {% endcall %}
 
 {% if role == 'parent' and children %}
@@ -55,7 +55,7 @@
           <small>
             {% if lesson.topic and lesson.topic != lesson.title %}{{ lesson.topic }} · {% endif %}
             {{ names[lesson.tutor_id].name if role == 'student' else names[lesson.student_id].name }}
-            {% if role == 'parent' %}<span aria-hidden="true"> · </span>{{ names[lesson.tutor_id].name }}{% endif %}
+            {% if role in ['admin', 'parent'] %}<span aria-hidden="true"> · </span>{{ names[lesson.tutor_id].name }}{% endif %}
           </small>
         </div>
         <div class="row-actions">
@@ -129,7 +129,7 @@
             {% for booking in series %}
               <div class="weekly-booking">
                 <strong>{{ names[booking.student_id].name }} · {{ booking.topic }}</strong>
-                <small>{{ booking.title }} · {{ booking.first_on|day_label }} onwards, every week at {{ booking.time }}</small>
+                <small>{{ booking.title }} · {{ booking.start_at|stamp if booking.start_at else booking.first_on|day_label }} onwards, every week{% if booking.timezone %} ({{ booking.timezone }}){% endif %}</small>
                 {% if booking.blocked_reason %}<p class="warning">Future lessons need attention: {{ booking.blocked_reason }} Update availability or stop this booking and choose a new time.</p>{% endif %}
                 <form method="post" action="{{ url_for('lessons.stop_series', series_id=booking._id) }}">{{ csrf() }}<button class="button secondary compact">Stop weekly booking</button><small>Removes future scheduled lessons in this booking.</small></form>
               </div>

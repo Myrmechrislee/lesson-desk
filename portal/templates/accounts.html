@@ -102,7 +102,10 @@
               {% elif user.deletion_pending %}<span class="pill unpaid">Deletion pending</span>
               {% else %}<span class="pill unpaid">Provisioning pending</span>{% endif %}
             </td>
-            <td>{% if user._id != g.user._id %}<a class="button danger compact no-wrap" href="{{ url_for('accounts.delete', account_id=user._id) }}">Delete account</a>{% endif %}</td>
+            <td>
+              {% if user.active and user.role in ['tutor', 'parent', 'student'] %}<a class="button secondary compact no-wrap" href="{{ url_for('lessons.availability', account_id=user._id) }}">Edit availability</a>{% endif %}
+              {% if user._id != g.user._id %}<a class="button danger compact no-wrap" href="{{ url_for('accounts.delete', account_id=user._id) }}">Delete account</a>{% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>

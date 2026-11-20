@@ -4,8 +4,8 @@ from datetime import timedelta
 
 from bson import ObjectId
 
-from .core import Problem, atomic, date_field, db, local_datetime, lock_accounts, now, time_minutes, today, zone
-from .scheduling import verify_slot
+from .core import Problem, atomic, boundary, date_field, db, local_datetime, lock_accounts, now, schedule_zone, time_minutes, today, zone
+from .scheduling import verify_slot, weekly_intervals
 
 HORIZON_WEEKS = 12
 
@@ -13,25 +13,38 @@ HORIZON_WEEKS = 12
 def verify_recurring_conflicts(series, transaction):
     """Check the whole ongoing reservation, including bookings far in the future."""
     first = date_field(series["first_on"])
-    offset = first.weekday() * 1440 + time_minutes(series["time"])
+    tz = schedule_zone(series)
     parties = [{"tutor_id": series["tutor_id"]}, {"student_id": series["student_id"]}]
     for other in db().lesson_series.find({"active": True, "$or": parties}, session=transaction):
         if other["_id"] == series.get("_id"):
             continue
-        other_offset = date_field(other["first_on"]).weekday() * 1440 + time_minutes(other["time"])
-        if any(offset < other_offset + shift + other["minutes"] and other_offset + shift < offset + series["minutes"]
-               for shift in (-10080, 0, 10080)):
+        # Compare UTC occurrences over both seasonal cycles: schedules in
+        # different zones may conflict in just one season.
+        anchor = max(first, date_field(other["first_on"]))
+        left = boundary(anchor, tz=tz)
+        right = boundary(anchor + timedelta(weeks=106), tz=tz)
+
+        def rule(record):
+            minute = time_minutes(record["time"])
+            return {"weekday": date_field(record["first_on"]).weekday(),
+                    "start_min": minute, "end_min": minute + record["minutes"],
+                    "timezone": schedule_zone(record).key}
+
+        candidates = list(weekly_intervals(rule(other), left, right))
+        if any(start < other_end and end > other_start
+               for start, end in weekly_intervals(rule(series), left, right)
+               for other_start, other_end in candidates):
             raise Problem("An ongoing weekly booking already reserves this time for the tutor or student.", 409)
-    first_start = local_datetime(f"{first}T{series['time']}")
+    first_start = local_datetime(f"{first}T{series['time']}", tz=tz)
     for lesson in db().lessons.find({
         "$or": parties, "status": "scheduled", "end_at": {"$gt": first_start},
     }, {"start_at": 1, "end_at": 1}, session=transaction):
-        day = lesson["start_at"].astimezone(zone()).date() - timedelta(days=1)
-        last = lesson["end_at"].astimezone(zone()).date()
+        day = lesson["start_at"].astimezone(tz).date() - timedelta(days=1)
+        last = lesson["end_at"].astimezone(tz).date()
         while day <= last:
             if day >= first and day.weekday() == first.weekday():
                 try:
-                    start = local_datetime(f"{day}T{series['time']}")
+                    start = local_datetime(f"{day}T{series['time']}", tz=tz)
                 except Problem:
                     day += timedelta(days=1)
                     continue
@@ -49,11 +62,13 @@ def booking_parties(tutor_id, student_id, transaction):
     return parent_id
 
 
-def series_record(tutor_id, student_id, enrollment, title, first, minutes):
+def series_record(tutor_id, student_id, enrollment, title, first, minutes, *, skip_availability=False, created_by=None):
     return {
         "_id": ObjectId(), "tutor_id": tutor_id, "student_id": student_id,
         "topic_id": enrollment["_id"], "topic": enrollment.get("topic", "General lessons"),
         "title": title, "minutes": minutes, "first_on": first[:10], "time": first[11:],
+        "start_at": local_datetime(first), "timezone": zone().key,
+        "skip_availability": skip_availability, "created_by": created_by or tutor_id,
         "next_on": first[:10], "active": True, "created_at": now(), "next_check_at": now(),
     }
 
@@ -70,13 +85,14 @@ def extend_in_transaction(series, until, transaction, *, strict=False):
     issue = None
     while day < until:
         try:
-            start = local_datetime(f"{day}T{series['time']}")
+            start = local_datetime(f"{day}T{series['time']}", tz=schedule_zone(series))
             end = start + timedelta(minutes=series["minutes"])
             if start > now() and not database.lessons.find_one({
                 "series_id": series["_id"], "occurrence_on": day.isoformat(),
             }, {"_id": 1}, session=transaction):
                 verify_slot(series["tutor_id"], series["student_id"], start, end,
-                            excluding_series=series["_id"], session=transaction)
+                            excluding_series=series["_id"],
+                            skip_availability=series.get("skip_availability", False), session=transaction)
                 database.lessons.insert_one({
                     "tutor_id": series["tutor_id"], "student_id": series["student_id"],
                     "topic_id": enrollment["_id"], "topic": enrollment.get("topic", "General lessons"),
@@ -84,6 +100,8 @@ def extend_in_transaction(series, until, transaction, *, strict=False):
                     "status": "scheduled", "rate_cents": enrollment["rate_cents"],
                     "invoice_id": None, "created_at": now(),
                     "series_id": series["_id"], "occurrence_on": day.isoformat(),
+                    "created_by": series.get("created_by", series["tutor_id"]),
+                    "availability_override": series.get("skip_availability", False),
                 }, session=transaction)
                 created += 1
         except Problem as error:

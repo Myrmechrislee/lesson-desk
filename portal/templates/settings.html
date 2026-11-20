@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import csrf, header %}
+{% block title %}Settings · Lesson Desk{% endblock %}
+{% block content %}
+{{ header('Settings', 'Choose how dates and times appear for your account.') }}
+<section class="panel form-panel narrow">
+  <h2>Time preferences</h2>
+  <form method="post" class="form-stack">
+    {{ csrf() }}
+    <label>Timezone
+      <select name="timezone" required data-timezone-select>
+        {% for name in timezones %}<option value="{{ name }}" {{ 'selected' if name == selected_timezone else '' }}>{{ name|replace('_', ' ') }}</option>{% endfor %}
+      </select>
+      <small>Lesson times, calendars and availability pickers use this timezone.</small>
+    </label>
+    <div><button type="button" class="button secondary compact" data-use-device-timezone>Use my device timezone</button><span class="meta" data-device-timezone aria-live="polite"></span></div>
+    <label>Clock format
+      <select name="time_format" required>
+        <option value="12" {{ 'selected' if selected_time_format == '12' else '' }}>12 hour (2:30 PM)</option>
+        <option value="24" {{ 'selected' if selected_time_format == '24' else '' }}>24 hour (14:30)</option>
+      </select>
+    </label>
+    <p class="meta">Saved lessons keep the same instant. Weekly schedules continue to repeat in the timezone where they were created, including daylight saving changes.</p>
+    <div class="form-actions"><button class="button primary">Save preferences</button></div>
+  </form>
+</section>
+{% endblock %}

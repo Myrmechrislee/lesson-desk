@@ -2,12 +2,17 @@
 {% from 'ui.html' import back, csrf, empty, header %}
 {% block title %}Schedule lesson · Lesson Desk{% endblock %}
 {% block content %}
+{% set is_admin = g.user.role == 'admin' %}
 {{ back(url_for('lessons.index'), 'Lessons') }}
 {{ header('Schedule lesson', 'Times are shown in ' ~ zone_name ~ '.') }}
 <section class="panel form-panel">
 {% if enrollments %}
-  <form method="post" class="form-stack" data-booking-form data-availability-url="{{ url_for('lessons.booking_availability') }}">
+  <form method="post" class="form-stack" data-booking-form data-availability-url="{{ url_for('lessons.booking_availability') }}"{% if is_admin %} data-admin-booking{% endif %}>
     {{ csrf() }}
+    {% if is_admin %}
+      <p class="notice">Admin bookings can use any time outside saved availability. Existing lessons still reserve the tutor and student.</p>
+      <label>Tutor<select name="tutor_id" required data-booking-tutor><option value="">Choose a tutor</option>{% for tutor in tutors %}<option value="{{ tutor._id }}">{{ tutor.name }}</option>{% endfor %}</select></label>
+    {% endif %}
     <label>Student
       <select name="student_id" required data-booking-student>
         <option value="">Choose a student</option>
@@ -17,7 +22,7 @@
     <label>Learning topic
       <select name="topic_id" required data-booking-topic>
         <option value="">Choose a topic</option>
-        {% for topic in topics %}<option value="{{ topic._id }}" data-student-id="{{ topic.student_id }}" data-topic="{{ topic.topic or 'General lessons' }}">{{ topic.topic or 'General lessons' }} · {{ topic.rate_cents|money }} per lesson</option>{% endfor %}
+        {% for topic in topics %}<option value="{{ topic._id }}" data-tutor-id="{{ topic.tutor_id }}" data-student-id="{{ topic.student_id }}" data-topic="{{ topic.topic or 'General lessons' }}">{{ topic.topic or 'General lessons' }} · {{ topic.rate_cents|money }} per lesson</option>{% endfor %}
       </select>
       <small>An administrator can add topics and set their rates in Students & topics.</small>
     </label>
@@ -31,7 +36,7 @@
       <label>Duration (minutes)<input type="number" name="minutes" min="1" max="720" value="60" required data-booking-duration></label>
     </div>
     <section class="booking-availability" aria-label="Student and tutor availability" data-booking-calendar hidden>
-      <h2>Find a time that works for both</h2>
+      <h2>{{ 'Saved availability (optional for admin bookings)' if is_admin else 'Find a time that works for both' }}</h2>
       <label>View availability on<input type="date" value="{{ default_day }}" data-booking-day></label>
       <div class="availability-comparison">
         <div><strong>Tutor availability</strong><p data-tutor-hours></p></div>
@@ -40,7 +45,7 @@
       <label>Available start times<select data-booking-slots><option value="">Choose an available time</option></select><small>Only times that fit the duration, both calendars and existing bookings are listed.</small></label>
     </section>
     <p class="meta" id="booking-validation" data-booking-validation aria-live="polite">Choose a student to see their availability alongside the tutor's.</p>
-    <div class="form-actions"><button class="button primary" data-booking-submit>Schedule lesson</button><a href="{{ url_for('lessons.availability') }}" class="text-link">Edit your availability</a></div>
+    <div class="form-actions"><button class="button primary" data-booking-submit>Schedule lesson</button><a href="{{ url_for('lessons.availability') }}" class="text-link">{{ 'Manage availability' if is_admin else 'Edit your availability' }}</a></div>
   </form>
 {% else %}
   {{ empty('No students linked.', 'An administrator can link a student to your account.') }}

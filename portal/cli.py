@@ -7,7 +7,7 @@ from pymongo.errors import PyMongoError
 
 from .accounts import Auth0Management, link_existing_user, provision, username_field
 from .billing import deliver_next, refresh_overdue
-from .core import ROLES, Problem, atomic, boundary, db, email_field, ensure_indexes, lock_accounts, now, today
+from .core import ROLES, Problem, atomic, boundary, db, email_field, ensure_indexes, lock_accounts, now, today, zone
 from .recurring import maintain_series
 from .lesson_reminders import enqueue_reminders, deliver_next_reminder
 from .onboarding import deliver_next_onboarding
@@ -36,7 +36,10 @@ def seed_records(tutor, parent, student):
             upsert=True, session=transaction,
         )
         database.weekly_availability.insert_many([
-            {owner_key: owner_id, "weekday": day, "start_min": 540, "end_min": 1140}
+            {owner_key: owner_id, "weekday": day, "start_min": 540, "end_min": 1140,
+             "timezone": zone().key,
+             "start_at": boundary(today() - timedelta(days=today().weekday()) + timedelta(days=day), 540),
+             "end_at": boundary(today() - timedelta(days=today().weekday()) + timedelta(days=day), 1140)}
             for owner_key, owner_id in (("tutor_id", tutor_id), ("parent_id", parent_id))
             for day in range(7)
         ], session=transaction)

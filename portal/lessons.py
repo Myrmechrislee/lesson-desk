@@ -3,9 +3,9 @@ from datetime import timedelta
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 
 from .core import (
-    FINAL_STATUSES, STATUSES, WEEKDAYS, Problem, atomic, boundary, date_field, db,
+    FINAL_STATUSES, STATUSES, WEEKDAYS, Problem, atomic, boundary, clock_label, date_field, db,
     int_field, local_datetime, lock_accounts, now, object_id, people, requires,
-    stamp, text_field, time_minutes, today,
+    stamp, text_field, time_minutes, today, zone,
 )
 from .recurring import HORIZON_WEEKS, booking_parties, extend_in_transaction, maintain_series, series_record, verify_recurring_conflicts
 from .scheduling import availability_calendar, availability_owner, change_calendar, occupied, open_slots, overlaps, verify_change_slot, verify_slot, weekly_windows
@@ -39,6 +39,8 @@ def children():
 
 
 def lesson_scope(role, user_id, student_ids=None):
+    if role == "admin":
+        return {}
     if role == "parent":
         return {"student_id": {"$in": student_ids}}
     return {f"{role}_id": user_id}
@@ -116,7 +118,7 @@ def change_requests(role, account_id, student_ids=None):
 
 
 @bp.get("/lessons")
-@requires("tutor", "parent", "student")
+@requires("admin", "tutor", "parent", "student")
 def index():
     role = g.user["role"]
     child_profiles = children() if role == "parent" else []
@@ -183,12 +185,28 @@ def index():
 
 
 @bp.get("/lessons/new")
-@requires("tutor")
+@requires("admin", "tutor")
 def new():
-    enrollments, names = tutor_students()
-    topics, _ = tutor_topics()
+    tutors = []
+    if g.user["role"] == "admin":
+        tutors = list(db().users.find({"role": "tutor", "active": True}, {"name": 1}).sort("name", 1))
+        students = list(db().users.find({"role": "student", "active": True}, {"name": 1}))
+        topics = list(db().enrollments.find({
+            "tutor_id": {"$in": [tutor["_id"] for tutor in tutors]},
+            "student_id": {"$in": [student["_id"] for student in students]},
+        }))
+        names = {user["_id"]: user for user in students + tutors}
+        enrollments = sorted({row["student_id"]: row for row in topics}.values(),
+                             key=lambda row: names[row["student_id"]]["name"].casefold())
+    else:
+        enrollments, names = tutor_students()
+        topics, _ = tutor_topics()
     return render_template("lesson_new.html", enrollments=enrollments, topics=topics, names=names,
-                           default_day=today() + timedelta(days=1))
+                           tutors=tutors, default_day=today() + timedelta(days=1))
+
+
+def booking_tutor(values):
+    return object_id(values.get("tutor_id")) if g.user["role"] == "admin" else g.user["_id"]
 
 
 def repeat_options(form):
@@ -208,16 +226,18 @@ def weekly_starts(first, weeks):
 
 
 @bp.get("/lessons/booking-availability")
-@requires("tutor")
+@requires("admin", "tutor")
 def booking_availability():
+    tutor_id = booking_tutor(request.args)
+    skip_availability = g.user["role"] == "admin"
     student_id = object_id(request.args.get("student_id"))
-    enrollment_for(g.user["_id"], student_id, None)
+    enrollment_for(tutor_id, student_id, None)
     day = date_field(request.args.get("day"))
     minutes = int_field(request.args, "minutes", "a duration in minutes", 1, 720)
     student = db().users.find_one({"_id": student_id}, {"parent_id": 1})
     parent_id = student.get("parent_id") if student else None
     start, end = boundary(day), boundary(day + timedelta(days=1))
-    bookings = list(occupied(g.user["_id"], student_id, start, end))
+    bookings = list(occupied(tutor_id, student_id, start, end))
 
     def windows_for(owner_id, field):
         if not owner_id:
@@ -245,12 +265,12 @@ def booking_availability():
                 free.append((cursor, right))
         def labels(windows):
             return list(dict.fromkeys(
-                f"{stamp(max(left, start), 'time')}–{'24:00' if right >= end else stamp(right, 'time')}"
+                f"{stamp(max(left, start), 'time')}–{clock_label(1440) if right >= end else stamp(right, 'time')}"
                 for left, right in windows if left < end and right > start
             ))
         return {"available": labels(free), "unavailable": labels(unavailable)}
 
-    synthetic = {"tutor_id": g.user["_id"], "student_id": student_id,
+    synthetic = {"tutor_id": tutor_id, "student_id": student_id,
                  "start_at": start - timedelta(days=1),
                  "end_at": start - timedelta(days=1) + timedelta(minutes=minutes)}
     slots = open_slots(synthetic, day, parent_id=parent_id) if parent_id else []
@@ -262,24 +282,27 @@ def booking_availability():
         candidate = None
         try:
             for candidate in weekly_starts(request.args["starts_at"], weeks):
-                verify_slot(g.user["_id"], student_id, candidate, candidate + timedelta(minutes=minutes), session=None)
+                verify_slot(tutor_id, student_id, candidate, candidate + timedelta(minutes=minutes),
+                            skip_availability=skip_availability, session=None)
             if mode == "forever":
                 first = request.args["starts_at"]
-                verify_recurring_conflicts({"tutor_id": g.user["_id"], "student_id": student_id,
-                    "first_on": first[:10], "time": first[11:], "minutes": minutes}, None)
-            valid, reason = True, "This time fits both calendars and has no booking conflicts."
+                verify_recurring_conflicts({"tutor_id": tutor_id, "student_id": student_id,
+                    "first_on": first[:10], "time": first[11:], "minutes": minutes, "timezone": zone().key}, None)
+            valid, reason = True, ("No booking conflicts. Availability is overridden for this admin booking."
+                                   if skip_availability else "This time fits both calendars and has no booking conflicts.")
         except Problem as error:
             reason = f"{stamp(candidate)}: {error.message}" if candidate else error.message
     student_hours = windows_for(parent_id, "parent_id")
-    return {"tutor": windows_for(g.user["_id"], "tutor_id"),
+    return {"tutor": windows_for(tutor_id, "tutor_id"),
             "parent": student_hours, "student": student_hours, "slots": slots,
             "valid": valid, "reason": reason}
 
 
 @bp.post("/lessons/new")
-@requires("tutor")
+@requires("admin", "tutor")
 def create():
-    tutor_id = g.user["_id"]
+    tutor_id = booking_tutor(request.form)
+    skip_availability = g.user["role"] == "admin"
     student_id = object_id(request.form.get("student_id"))
     first = request.form.get("starts_at", "")
     if local_datetime(first) <= now():
@@ -298,7 +321,8 @@ def create():
         booking_parties(tutor_id, student_id, transaction)
         enrollment = enrollment_for(tutor_id, student_id, transaction, topic_id=topic_id, require_topic=True)
         if mode == "forever":
-            series = series_record(tutor_id, student_id, enrollment, title, first, minutes)
+            series = series_record(tutor_id, student_id, enrollment, title, first, minutes,
+                                   skip_availability=skip_availability, created_by=g.user["_id"])
             verify_recurring_conflicts(series, transaction)
             db().lesson_series.insert_one(series, session=transaction)
             extend_in_transaction(series, day + timedelta(weeks=HORIZON_WEEKS), transaction, strict=True)
@@ -308,7 +332,7 @@ def create():
         for start in starts:
             end = start + duration
             try:
-                verify_slot(tutor_id, student_id, start, end, session=transaction)
+                verify_slot(tutor_id, student_id, start, end, skip_availability=skip_availability, session=transaction)
             except Problem as error:
                 raise Problem(f"{stamp(start, 'full')}: {error.message}", error.status) from None
             records.append({
@@ -316,6 +340,7 @@ def create():
                 "start_at": start, "end_at": end, "status": "scheduled",
                 "rate_cents": enrollment["rate_cents"], "invoice_id": None, "created_at": created_at,
                 "topic_id": enrollment["_id"], "topic": enrollment.get("topic", "General lessons"),
+                "created_by": g.user["_id"], "availability_override": skip_availability,
             })
         db().lessons.insert_many(records, session=transaction)
 
@@ -377,11 +402,13 @@ def plan():
 
 
 @bp.get("/lessons/<lesson_id>")
-@requires("tutor", "student", "parent")
+@requires("admin", "tutor", "student", "parent")
 def detail(lesson_id):
     from .planning import lesson_context
     lesson = get_lesson(lesson_id)
     names = people((lesson["student_id"], lesson["tutor_id"]))
+    if g.user["role"] == "admin":
+        return render_template("lesson_admin.html", lesson=lesson, names=names, statuses=STATUSES)
     return render_template(
         "lesson_detail.html", lesson=lesson, names=names, statuses=STATUSES,
         current=now(), local_day=stamp(lesson["start_at"], "input")[:10],
@@ -524,18 +551,54 @@ def outcome(lesson_id):
     return redirect(url_for("lessons.detail", lesson_id=lesson_id), code=303)
 
 
-@bp.get("/availability")
-@requires("tutor", "parent")
-def availability():
-    child_profiles = children() if g.user["role"] == "parent" else []
-    selected_id = object_id(request.args["student_id"]) if request.args.get("student_id") else (
-        child_profiles[0]["_id"] if child_profiles else None
+def availability_account(values):
+    if g.user["role"] != "admin":
+        if values.get("account_id") and values["account_id"] != str(g.user["_id"]):
+            abort(404)
+        return g.user
+    query = {"active": True, "role": {"$in": ["tutor", "parent", "student"]}}
+    if values.get("account_id"):
+        query["_id"] = object_id(values["account_id"])
+    elif request.method != "GET":
+        raise Problem("Choose an account whose availability you want to edit.")
+    account = db().users.find_one(query, sort=[("name", 1)])
+    if not account:
+        abort(404)
+    return account
+
+
+def availability_target(account, values, *, default_student=False):
+    if account["role"] == "student":
+        parent = db().users.find_one({"_id": account.get("parent_id"), "role": "parent", "active": True})
+        if not parent:
+            raise Problem("Link this student to a parent before setting availability.", 409)
+        if values.get("student_id") and values["student_id"] != str(account["_id"]):
+            abort(404)
+        return parent, account["_id"], []
+    child_profiles = list(db().users.find({
+        "parent_id": account["_id"], "role": "student", "active": True,
+    }, {"name": 1}).sort("name", 1)) if account["role"] == "parent" else []
+    selected_id = object_id(values["student_id"]) if values.get("student_id") else (
+        child_profiles[0]["_id"] if default_student and child_profiles else None
     )
     if selected_id and selected_id not in {child["_id"] for child in child_profiles}:
         abort(404)
-    owner = availability_owner(g.user["_id"], selected_id) if selected_id else {
-        g.user["role"] + "_id": g.user["_id"],
-        **({"student_id": {"$exists": False}} if g.user["role"] == "parent" else {}),
+    return account, selected_id, child_profiles
+
+
+def availability_destination(managed, student_id, week):
+    return url_for("lessons.availability", week=week.isoformat(), student_id=student_id,
+                   **({"account_id": managed["_id"]} if g.user["role"] == "admin" else {}))
+
+
+@bp.get("/availability")
+@requires("admin", "tutor", "parent")
+def availability():
+    managed = availability_account(request.args)
+    account, selected_id, child_profiles = availability_target(managed, request.args, default_student=True)
+    owner = availability_owner(account["_id"], selected_id) if selected_id else {
+        account["role"] + "_id": account["_id"],
+        **({"student_id": {"$exists": False}} if account["role"] == "parent" else {}),
     }
     day = date_field(request.args["week"]) if "week" in request.args else today()
     week = day - timedelta(days=day.weekday())
@@ -546,70 +609,70 @@ def availability():
     return render_template(
         "availability.html", weekdays=WEEKDAYS, blocks=blocks, exceptions=exceptions,
         children=child_profiles, selected_student=selected_id,
+        managed_account=managed, parent_calendar=managed["role"] == "parent",
+        management_accounts=list(db().users.find({"active": True, "role": {"$in": ["tutor", "parent", "student"]}},
+                                                 {"name": 1, "role": 1}).sort("name", 1)) if g.user["role"] == "admin" else [],
         inherited=bool(selected_id and "student_id" in owner and isinstance(owner["student_id"], dict)),
         **availability_calendar(day, blocks, exceptions),
     )
 
 
-def availability_student(form):
-    """Validate the explicit student selection; older clients may edit shared hours."""
-    if not form.get("student_id"):
-        return None
-    if g.user["role"] != "parent":
-        abort(404)
-    student_id = object_id(form["student_id"])
-    if not db().users.find_one({
-        "_id": student_id, "parent_id": g.user["_id"], "role": "student", "active": True,
-    }, {"_id": 1}):
-        abort(404)
-    return student_id
-
-
-def editable_availability_owner(student_id, kind, entry_id, transaction):
-    parties = {g.user["_id"]: g.user["role"]}
+def editable_availability_owner(account, student_id, kind, entry_id, transaction):
+    parties = {g.user["_id"]: g.user["role"], account["_id"]: account["role"]}
     if student_id:
         parties[student_id] = "student"
     lock_accounts(transaction, parties)
     if not student_id:
         return {
-            g.user["role"] + "_id": g.user["_id"],
-            **({"student_id": {"$exists": False}} if g.user["role"] == "parent" else {}),
+            account["role"] + "_id": account["_id"],
+            **({"student_id": {"$exists": False}} if account["role"] == "parent" else {}),
         }, entry_id
     student = db().users.find_one({
-        "_id": student_id, "parent_id": g.user["_id"], "role": "student", "active": True,
+        "_id": student_id, "parent_id": account["_id"], "role": "student", "active": True,
     }, {"availability_parent_id": 1}, session=transaction)
     if not student:
         abort(404)
-    owner = {"parent_id": g.user["_id"], "student_id": student_id}
-    if student.get("availability_parent_id") == g.user["_id"]:
+    owner = {"parent_id": account["_id"], "student_id": student_id}
+    if student.get("availability_parent_id") == account["_id"]:
         return owner, entry_id
 
     # Preserve inherited hours on the first edit without changing either sibling.
     # The marker also remembers a deliberately empty student calendar.
     resolved_id = None
     for entry_kind, collection in (("weekly", db().weekly_availability), ("exception", db().availability_exceptions)):
-        for entry in collection.find({"parent_id": g.user["_id"], "student_id": {"$exists": False}}, session=transaction):
+        for entry in collection.find({"parent_id": account["_id"], "student_id": {"$exists": False}}, session=transaction):
             previous_id = entry.pop("_id")
             inserted_id = collection.insert_one({**entry, **owner}, session=transaction).inserted_id
             if entry_kind == kind and previous_id == entry_id:
                 resolved_id = inserted_id
     if entry_id and not resolved_id:
         abort(404)
-    db().users.update_one({"_id": student_id}, {"$set": {"availability_parent_id": g.user["_id"]}}, session=transaction)
+    db().users.update_one({"_id": student_id}, {"$set": {"availability_parent_id": account["_id"]}}, session=transaction)
     return owner, resolved_id
 
 
 @bp.post("/availability/<kind>")
-@requires("tutor", "parent")
+@requires("admin", "tutor", "parent")
 def add_availability(kind):
-    student_id = availability_student(request.form)
+    managed = availability_account(request.form)
+    account, student_id, _ = availability_target(managed, request.form)
     selected_week = date_field(request.form["week"]) if request.form.get("week") else today()
     entry_id = object_id(request.form["entry_id"]) if request.form.get("entry_id") else None
     if kind == "weekly":
         start = time_minutes(request.form.get("start", ""))
         end = time_minutes(request.form.get("end", ""), end=True)
+        if request.form.get("end_next_day") == "yes":
+            end = time_minutes(request.form.get("end", "")) + 1440
+        elif end <= start:
+            end += 1440
+        weekday = int_field(request.form, "weekday", "a weekday", 0, 6)
+        anchor = selected_week - timedelta(days=selected_week.weekday()) + timedelta(days=weekday)
+        start_at = local_datetime(f"{anchor}T{request.form['start']}")
+        end_day = anchor + timedelta(days=end // 1440)
+        end_wall = f"{end_day}T{end // 60 % 24:02d}:{end % 60:02d}"
+        end_at = local_datetime(end_wall)
         fields = {
-            "weekday": int_field(request.form, "weekday", "a weekday", 0, 6),
+            "weekday": weekday, "timezone": zone().key, "start_at": start_at, "end_at": end_at,
             "start_min": start, "end_min": end,
             "kind": request.form.get("kind", "available"),
         }
@@ -632,7 +695,7 @@ def add_availability(kind):
         raise Problem("The end time must be after the start time.")
 
     def insert(transaction):
-        owner, resolved_id = editable_availability_owner(student_id, kind, entry_id, transaction)
+        owner, resolved_id = editable_availability_owner(account, student_id, kind, entry_id, transaction)
         if entry_id:
             result = collection.update_one(
                 {"_id": resolved_id, **owner}, {"$set": fields}, session=transaction,
@@ -646,26 +709,27 @@ def add_availability(kind):
     atomic(insert)
     flash("Availability saved.")
     if kind == "exception" and direction == "unavailable":
-        lesson_owner = {"tutor_id": g.user["_id"]} if g.user["role"] == "tutor" else (
-            {"student_id": student_id} if student_id else {"student_id": {"$in": [child["_id"] for child in children()]}}
+        lesson_owner = {"tutor_id": account["_id"]} if account["role"] == "tutor" else (
+            {"student_id": student_id} if student_id else {"student_id": {"$in": db().users.distinct("_id", {"parent_id": account["_id"], "role": "student"})}}
         )
         count = db().lessons.count_documents({**lesson_owner, "status": "scheduled", **overlaps(start, end)})
         if count:
             flash(f"{count} booked lesson{'s overlap' if count != 1 else ' overlaps'} this period. Review the schedule.", "notice")
-    return redirect(url_for("lessons.availability", week=selected_week.isoformat(), student_id=student_id), code=303)
+    return redirect(availability_destination(managed, student_id, selected_week), code=303)
 
 
 @bp.post("/availability/<kind>/<entry_id>/remove")
-@requires("tutor", "parent")
+@requires("admin", "tutor", "parent")
 def remove_availability(kind, entry_id):
-    student_id = availability_student(request.form)
+    managed = availability_account(request.form)
+    account, student_id, _ = availability_target(managed, request.form)
     selected_week = date_field(request.form["week"]) if request.form.get("week") else today()
     collections = {"weekly": db().weekly_availability, "exception": db().availability_exceptions}
     if kind not in collections:
         abort(404)
 
     def remove(transaction):
-        owner, resolved_id = editable_availability_owner(student_id, kind, object_id(entry_id), transaction)
+        owner, resolved_id = editable_availability_owner(account, student_id, kind, object_id(entry_id), transaction)
         result = collections[kind].delete_one(
             {"_id": resolved_id, **owner}, session=transaction,
         )
@@ -674,7 +738,7 @@ def remove_availability(kind, entry_id):
 
     atomic(remove)
     flash("Availability removed.")
-    return redirect(url_for("lessons.availability", week=selected_week.isoformat(), student_id=student_id), code=303)
+    return redirect(availability_destination(managed, student_id, selected_week), code=303)
 
 
 def lesson_for_change(lesson_id, transaction):

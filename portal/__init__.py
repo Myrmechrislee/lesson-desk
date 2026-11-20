@@ -12,9 +12,9 @@ from flask_wtf.csrf import CSRFError
 from pymongo import MongoClient
 from werkzeug.exceptions import HTTPException, SecurityError
 
-from . import accounts, ai, announcements, billing, calendar_feed, calls, comments, homework, lessons, planning, whiteboard
+from . import accounts, ai, announcements, billing, calendar_feed, calls, comments, homework, lessons, planning, settings, whiteboard
 from . import markdown as markdown_feature
-from .core import Problem, day_label, db, money, now, object_id, stamp
+from .core import Problem, clock_label, day_label, db, money, now, object_id, preferences, stamp, zone
 from .reminders import setup_reminders
 
 
@@ -101,12 +101,15 @@ def create_app(config=None):
     app.config["WTF_CSRF_SSL_STRICT"] = False
 
     accounts.configure_oidc(app)
-    for feature in (accounts, announcements, lessons, homework, billing, calendar_feed, whiteboard, markdown_feature, comments, planning, ai, calls):
+    for feature in (accounts, announcements, lessons, homework, billing, calendar_feed, whiteboard, markdown_feature, comments, planning, ai, calls, settings):
         app.register_blueprint(feature.bp)
 
-    app.jinja_env.filters.update(stamp=stamp, day_label=day_label, money=money,
+    app.jinja_env.filters.update(stamp=stamp, clock_label=clock_label, day_label=day_label, money=money,
                                  markdown=markdown_feature.render_markdown)
-    app.jinja_env.globals["zone_name"] = app.config["APP_TIMEZONE"]
+
+    @app.context_processor
+    def time_preferences():
+        return {"zone_name": zone().key, "time_format": preferences().get("time_format", "12")}
 
     @app.context_processor
     def account_notices():

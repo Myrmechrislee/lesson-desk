@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% from 'ui.html' import back, header, time_range %}
+{% block title %}{{ lesson.title }} · Lesson Desk{% endblock %}
+{% block content %}
+{{ back(url_for('lessons.index'), 'Lessons') }}
+{{ header(lesson.title, names[lesson.student_id].name ~ ' · ' ~ names[lesson.tutor_id].name) }}
+<section class="panel form-panel narrow">
+  <p class="meta">{{ zone_name }}</p>
+  <p><strong>{{ lesson.start_at|stamp }}</strong> – {{ lesson.end_at|stamp('time') }}</p>
+  <p><span class="pill {{ lesson.status }}">{{ statuses[lesson.status] }}</span></p>
+  {% if lesson.topic %}<p>Learning topic: {{ lesson.topic }}</p>{% endif %}
+  {% if lesson.availability_override %}<p class="meta">Booked by an administrator outside availability checks.</p>{% endif %}
+  <a class="text-link" href="{{ url_for('lessons.availability', account_id=lesson.student_id) }}">Edit student's availability</a>
+</section>
+{% endblock %}

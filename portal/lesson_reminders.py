@@ -87,13 +87,13 @@ def current_message(job, timestamp):
     if not lessons:
         return None
     names = people(key for lesson in lessons for key in (lesson["student_id"], lesson["tutor_id"]))
-    subject = "Lesson reminder: " + stamp(lessons[0]["start_at"]) if job["kind"] == "lesson" else "Your lessons for the coming week"
+    subject = "Lesson reminder: " + stamp(lessons[0]["start_at"], user=user) if job["kind"] == "lesson" else "Your lessons for the coming week"
     lines = [f"Hello {user['name']},", "", "Your lesson starts within 24 hours." if job["kind"] == "lesson" else "Here is your lesson schedule for the coming week.", ""]
     for lesson in lessons:
         student = names.get(lesson["student_id"], {}).get("name", "Student")
         tutor = names.get(lesson["tutor_id"], {}).get("name", "Tutor")
         lines += [f"{lesson.get('topic') or lesson.get('title') or 'Lesson'} — {student}",
-                  f"{stamp(lesson['start_at'])}–{stamp(lesson['end_at'], 'time')} ({current_app.config['APP_TIMEZONE']})",
+                  f"{stamp(lesson['start_at'], user=user)}–{stamp(lesson['end_at'], 'time', user=user)} ({zone(user).key})",
                   f"Tutor: {tutor}", current_app.config["APP_BASE_URL"] + f"/lessons/{lesson['_id']}", ""]
     lines += ["Check Lesson Desk for the latest schedule and any changes."]
     return address, subject, "\n".join(lines)

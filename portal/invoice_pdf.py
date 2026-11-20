@@ -80,10 +80,10 @@ def invoice_pdf(invoice):
             continue
         start = line["start_at"].astimezone(zone())
         end = line["end_at"].astimezone(zone())
-        end_text = end.strftime("%H:%M") if start.date() == end.date() else stamp(line["end_at"], "full")
+        end_text = stamp(line["end_at"], "time") if start.date() == end.date() else stamp(line["end_at"], "full")
         rows.append([
             [para(line["student"], body), para(line["topic"], small)] if line.get("topic") else para(line["student"], body),
-            para(f"{start:%d %b %Y}  |  {start:%H:%M}–{end_text}", body),
+            para(f"{start:%d %b %Y}  |  {stamp(line['start_at'], 'time')}–{end_text}", body),
             para(money(line["amount_cents"]), right),
         ])
     table = Table(rows, colWidths=[width * .34, width * .46, width * .20], repeatRows=1)

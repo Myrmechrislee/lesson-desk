@@ -110,8 +110,8 @@ def test_booking_preview_and_submission_enforce_both_calendars(app, database, us
                                              "start_min": 660, "end_min": 780})
     query = {**form, "day": day}
     preview = tutor.get("/lessons/booking-availability", query_string=query).get_json()
-    assert preview["tutor"]["available"] == ["00:00–24:00"]
-    assert preview["parent"]["available"] == ["11:00–13:00"]
+    assert preview["tutor"]["available"] == ["12:00 AM–12:00 AM"]
+    assert preview["parent"]["available"] == ["11:00 AM–1:00 PM"]
     assert not preview["valid"] and "parent" in preview["reason"]
     assert form["starts_at"] not in dict(preview["slots"])
     assert post(tutor, "/lessons/new", **form).status_code == 409
@@ -190,8 +190,8 @@ def test_other_students_bookings_are_unavailable_in_booking_and_change_views(app
         busy = lesson_record(database, users, "other_student", boundary(day, 780), title="Private other student lesson")
     form = booking(app, users, day=day, repeat="once", starts_at=f"{day}T13:00")
     preview = tutor.get("/lessons/booking-availability", query_string={**form, "day": str(day)}).get_json()
-    assert "13:00–14:00" in preview["tutor"]["unavailable"]
-    assert "11:00–13:00" in preview["tutor"]["available"]
+    assert "1:00 PM–2:00 PM" in preview["tutor"]["unavailable"]
+    assert "11:00 AM–1:00 PM" in preview["tutor"]["available"]
     assert not preview["valid"]
     assert f"{day}T13:00" not in dict(preview["slots"])
     assert f"{day}T12:15" not in dict(preview["slots"])
@@ -201,7 +201,7 @@ def test_other_students_bookings_are_unavailable_in_booking_and_change_views(app
     for client in (tutor, parent):
         page = client.get(path, query_string={"date": str(day)})
         assert page.status_code == 200
-        assert b"13:00\xe2\x80\x9314:00 \xc2\xb7 Booked \xc2\xb7 unavailable" in page.data
+        assert "1:00 PM–2:00 PM · Booked · unavailable".encode() in page.data
         assert f'value="{day}T13:00"'.encode() not in page.data
         assert f'value="{day}T12:15"'.encode() not in page.data
         assert f'value="{day}T14:00"'.encode() in page.data
@@ -217,7 +217,7 @@ def test_ongoing_booking_preserves_local_time_across_daylight_saving(app, databa
     assert post(tutor, "/lessons/new", **form).status_code == 303
     records = list(database.lessons.find({}).sort("start_at", 1))
     with app.app_context():
-        assert {stamp(record["start_at"], "time") for record in records} == {"10:00"}
+        assert {stamp(record["start_at"], "time") for record in records} == {"10:00 AM"}
     assert records[1]["start_at"] - records[0]["start_at"] == timedelta(hours=167)
 
 
